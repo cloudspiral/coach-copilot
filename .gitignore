@@ -8,11 +8,15 @@
 # JavaScript and TypeScript
 node_modules/
 dist/
+dist-server/
 build/
 coverage/
 .next/
 .vite/
 *.log
+playwright-report/
+test-results/
+artifacts/
 
 # Python
 __pycache__/

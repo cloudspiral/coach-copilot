@@ -1,0 +1,50 @@
+{
+  "name": "coach-copilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"tsx watch src/server/index.ts\" \"vite --host 127.0.0.1\"",
+    "dev:test": "concurrently -k -n api,web -c cyan,magenta \"tsx src/server/index.ts\" \"vite --host 127.0.0.1\"",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "lint": "eslint src tests evals e2e vite.config.ts playwright.config.ts",
+    "test": "vitest run --exclude tests/evals.test.ts",
+    "test:evals": "vitest run tests/evals.test.ts",
+    "test:live": "tsx evals/run-live.ts",
+    "test:quality:live": "tsx evals/natural-quality.ts",
+    "test:e2e": "playwright test --grep-invert @live",
+    "test:e2e:live": "REQUIRE_LIVE_MODEL=true playwright test --grep @live",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "start": "node dist-server/server/index.js",
+    "verify": "npm run lint && npm run typecheck && npm run test && npm run test:evals && npm run build && npm run test:e2e && npm run test:live && npm run test:quality:live && npm run test:e2e:live"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "openai": "^7.4.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "recharts": "^3.10.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/supertest": "^7.2.1",
+    "@vitejs/plugin-react": "^6.0.5",
+    "@vitest/coverage-v8": "^4.1.10",
+    "concurrently": "^10.0.4",
+    "eslint": "^10.8.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
+  }
+}
