@@ -34,6 +34,7 @@ export interface MemberContext {
     since: string;
     notes: string;
     snomedct_hint: string;
+    mapped_concept_id?: string;
   }>;
   workout_history: Array<{
     date: string;

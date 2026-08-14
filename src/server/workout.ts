@@ -15,6 +15,7 @@ import type { AppConfig } from "./config.js";
 import type { MemberContext } from "./data.js";
 import type { KnowledgeGraph } from "./graph.js";
 import type { StructuredModelGateway } from "./openai.js";
+import type { PlanRepository } from "./repositories.js";
 import { ConceptResolver, normalize } from "./resolver.js";
 
 export interface WorkoutResponse {
@@ -29,11 +30,6 @@ export interface WorkoutResponse {
   decisions: DecisionTrace[];
   evidence: EvidenceRecord[];
   modelCalls: ModelCallTrace[];
-}
-
-interface StoredPlan {
-  plan: WorkoutPlan;
-  intent: WorkoutIntent;
 }
 
 interface Candidate {
@@ -200,7 +196,6 @@ function validateNarrative(narrative: WorkoutNarrative, plan: WorkoutPlan, evide
 }
 
 export class WorkoutService {
-  private readonly plans = new Map<string, StoredPlan>();
   private readonly resolver: ConceptResolver;
 
   constructor(
@@ -209,6 +204,7 @@ export class WorkoutService {
     private readonly graph: KnowledgeGraph,
     private readonly gateway: StructuredModelGateway,
     private readonly config: AppConfig,
+    private readonly plans: PlanRepository,
   ) {
     this.resolver = new ConceptResolver(graph);
   }
@@ -216,7 +212,7 @@ export class WorkoutService {
   async generate(request: WorkoutRequest): Promise<WorkoutResponse> {
     const traceId = randomUUID();
     const modelCalls: ModelCallTrace[] = [];
-    const previous = request.basePlanId ? this.plans.get(request.basePlanId) : undefined;
+    const previous = request.basePlanId ? await this.plans.get(request.basePlanId) ?? undefined : undefined;
     if (request.basePlanId && !previous) {
       return this.clarification(traceId, modelCalls, "The base plan was not found. Generate a new plan before requesting an adjustment.");
     }
@@ -444,7 +440,7 @@ export class WorkoutService {
       if (note) prescription.instructions = `${prescription.instructions} ${note.note}`;
     }
     plan.safetyNotes = [narrative.safetySummary];
-    this.plans.set(plan.id, { plan, intent });
+    await this.plans.save(plan, intent);
 
     const includedIds = new Set(plan.sections.flatMap((section) => section.exercises.map((exercise) => exercise.exerciseId)));
     const includedDecisions = decisions.filter((item) => includedIds.has(item.exerciseId));

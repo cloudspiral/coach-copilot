@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { exercises, member } from "../src/server/data.js";
-import { buildGraph } from "../src/server/graph.js";
+import { assertTestDatabase } from "../src/server/db/database.js";
+import { sourceHash, stableId, validateGraph } from "../src/server/db/ingestion.js";
+import { buildDomainGraph, buildGraph, composeGraph } from "../src/server/graph.js";
 import { ConceptResolver } from "../src/server/resolver.js";
 
 describe("knowledge graph and concept resolution", () => {
@@ -23,6 +25,30 @@ describe("knowledge graph and concept resolution", () => {
     expect(graph.stats().byType.Exercise).toBe(exercises.length);
     expect(graph.edgesFrom(`member:${member.profile.id}`, "has_condition")).toHaveLength(1);
     expect(graph.edges.size).toBeGreaterThan(150);
+  });
+
+  it("keeps immutable domain concepts separate from the member overlay", () => {
+    const domain = buildDomainGraph(exercises);
+    const before = domain.stats();
+    expect(before.byType.Member).toBeUndefined();
+    validateGraph(domain);
+    const composed = composeGraph(domain, member);
+    expect(composed.stats()).toEqual(graph.stats());
+    expect(domain.stats()).toEqual(before);
+  });
+
+  it("derives repeatable IDs and source hashes while detecting content changes", () => {
+    expect(stableId("member", "organization:external-123")).toBe(stableId("member", "organization:external-123"));
+    const original = sourceHash({ exercises, member });
+    expect(sourceHash({ exercises: structuredClone(exercises), member: structuredClone(member) })).toBe(original);
+    const changed = structuredClone(member);
+    changed.profile.weight_kg += 0.1;
+    expect(sourceHash({ exercises, member: changed })).not.toBe(original);
+  });
+
+  it("refuses destructive setup against a non-test database", () => {
+    expect(() => assertTestDatabase("postgresql://user:pass@localhost/coach_copilot")).toThrow(/must end in _test/);
+    expect(() => assertTestDatabase("postgresql://user:pass@localhost/coach_copilot_test")).not.toThrow();
   });
 
   it("joins Jordan's active knee condition to exercises through anatomy traversal", () => {

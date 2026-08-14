@@ -1,12 +1,14 @@
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
-import { createProductionRuntime } from "./runtime.js";
+import { OpenAIStructuredGateway } from "./openai.js";
+import { createTestRuntime } from "./test-runtime.js";
 
 const config = loadConfig();
-const runtime = await createProductionRuntime(config);
+const gateway = new OpenAIStructuredGateway(config);
+const runtime = await createTestRuntime(config, gateway);
 const { app } = createApp(config, runtime);
 const server = app.listen(config.port, "127.0.0.1", () => {
-  console.log(`Coach Copilot API listening on http://127.0.0.1:${config.port} (${config.model}; key ${config.apiKey ? "configured" : "missing"})`);
+  console.log(`Coach Copilot test API listening on http://127.0.0.1:${config.port}`);
 });
 
 async function shutdown(): Promise<void> {

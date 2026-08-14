@@ -12,14 +12,7 @@ import { CopilotAnswerSchema, CopilotIntentSchema } from "../shared/schemas.js";
 import type { AppConfig } from "./config.js";
 import type { MemberContext } from "./data.js";
 import type { StructuredModelGateway } from "./openai.js";
-
-interface ConversationTurn {
-  message: string;
-  topic: CopilotTopic;
-  topics: CopilotTopic[];
-  headline: string;
-  answer: string;
-}
+import type { ConversationRepository } from "./repositories.js";
 
 interface GroundedBundle {
   answer: CopilotAnswer;
@@ -125,6 +118,28 @@ function validateAnswer(answer: CopilotAnswer, evidence: EvidenceRecord[]): bool
     const support = item.evidenceIds.map((id) => byId.get(id)?.detail ?? "").join(" ");
     return numericTokens(item.text).every((token) => support.includes(token));
   });
+}
+
+export function preservesTopicContract(
+  answer: CopilotAnswer,
+  candidate: CopilotAnswer,
+  topic: CopilotTopic,
+  question: string,
+): boolean {
+  const prose = [answer.headline, ...answer.narrative.map((item) => item.text)].join(" ");
+  const candidateProse = [candidate.headline, ...candidate.narrative.map((item) => item.text)].join(" ");
+  if (topic === "sleep" || topic === "adherence") {
+    const requiredNumbers = new Set(numericTokens(candidateProse));
+    if ([...requiredNumbers].some((token) => !prose.includes(token))) return false;
+  }
+  if (topic === "adherence" && /compare|four weeks/i.test(question) && !/percentage-point/i.test(prose)) return false;
+  if (topic === "chat" && (!/three member messages/i.test(prose) || !/one coach message/i.test(prose))) return false;
+  if (topic === "labs_reference" && /vitamin d/i.test(question) && !/cannot establish/i.test(prose)) return false;
+  if (topic === "draft_message" && !/knee/i.test(prose)) return false;
+  if (topic === "unavailable" && !/not available/i.test(prose)) return false;
+  if (topic === "missed_workout" && (!/work demands/i.test(prose) || !/her report/i.test(prose))) return false;
+  if (topic === "attachments" && (!/one synthetic/i.test(prose) || !/no viewable image file/i.test(prose))) return false;
+  return true;
 }
 
 function buildBundle(member: MemberContext, topic: CopilotTopic, question: string): GroundedBundle {
@@ -354,18 +369,17 @@ function buildSelectedBundle(member: MemberContext, topics: CopilotTopic[], ques
 }
 
 export class CopilotService {
-  private readonly conversations = new Map<string, ConversationTurn[]>();
-
   constructor(
     private readonly member: MemberContext,
     private readonly gateway: StructuredModelGateway,
     private readonly config: AppConfig,
+    private readonly conversations: ConversationRepository,
   ) {}
 
   async query(request: CopilotRequest): Promise<CopilotResponse> {
     const traceId = randomUUID();
     const conversationId = request.conversationId ?? `conversation_${randomUUID()}`;
-    const history = this.conversations.get(conversationId) ?? [];
+    const history = await this.conversations.getRecent(conversationId, request.memberId, 8);
     const deterministicIntent = routeTopic(request.message, history.at(-1)?.topic);
     const modelCalls: ModelCallTrace[] = [];
     let intent = deterministicIntent;
@@ -414,7 +428,7 @@ export class CopilotService {
           user: JSON.stringify({ question: request.message, candidateAnswer: bundle.answer, evidence: bundle.evidence }),
         });
         modelCalls.push(result.trace);
-        if (validateAnswer(result.value, bundle.evidence)) answer = result.value;
+        if (validateAnswer(result.value, bundle.evidence) && preservesTopicContract(result.value, bundle.answer, intent.topic, request.message)) answer = result.value;
       } catch (error) {
         if (this.config.requireLiveModel) throw error;
         mode = "deterministic_fallback";
@@ -424,14 +438,13 @@ export class CopilotService {
 
     const citedIds = new Set(answer.narrative.flatMap((item) => item.evidenceIds));
     const citedEvidence = bundle.evidence.filter((record) => citedIds.has(record.id));
-    const updated = [...history, {
+    await this.conversations.append(conversationId, request.memberId, {
       message: request.message,
       topic: intent.topic,
       topics,
       headline: answer.headline,
       answer: answer.narrative.map((item) => item.text).join(" "),
-    }].slice(-8);
-    this.conversations.set(conversationId, updated);
+    });
     return {
       status: "ready",
       mode,

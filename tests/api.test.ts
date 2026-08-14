@@ -2,16 +2,37 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../src/server/app.js";
 import type { AppConfig } from "../src/server/config.js";
+import { createTestRuntime } from "../src/server/test-runtime.js";
 import { makeControlledGateway } from "./helpers.js";
 
 const config: AppConfig = { port: 3001, model: "gpt-5.6-luna", reasoningEffort: "low", apiKey: "configured-for-mock", requireLiveModel: true };
-const { app } = createApp(config, makeControlledGateway());
+const gateway = makeControlledGateway();
+const runtime = await createTestRuntime(config, gateway);
+const { app } = createApp(config, runtime);
 
 describe("Coach Copilot API", () => {
   it("reports safe health metadata without exposing credentials", async () => {
     const response = await request(app).get("/api/health").expect(200);
     expect(response.body).toEqual({ apiKeyConfigured: true, model: "gpt-5.6-luna", graphReady: true });
     expect(JSON.stringify(response.body)).not.toContain("configured-for-mock");
+  });
+
+  it("reports repository, graph, and workflow readiness", async () => {
+    const response = await request(app).get("/api/ready").expect(200);
+    expect(response.body).toMatchObject({
+      ready: true,
+      database: "memory",
+      databaseConnected: true,
+      migrations: true,
+      seedData: true,
+      activeGraphVersion: "graph_test_v1",
+      workflowCheckpointer: true,
+    });
+  });
+
+  it("looks members up by request ID and returns 404 for unknown IDs", async () => {
+    await request(app).post("/api/copilot/query").send({ memberId: "missing-member", message: "How is adherence?" }).expect(404, { error: "Member not found" });
+    await request(app).post("/api/workouts/generate").send({ memberId: "missing-member", prompt: "Create a workout", durationMinutes: 30 }).expect(404, { error: "Member not found" });
   });
 
   it("generates a knee-aware plan with exactly two controlled calls", async () => {

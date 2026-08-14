@@ -1,187 +1,116 @@
 # Coach Copilot
 
-Coach Copilot is a complete local MVP for safe, explainable workout generation and evidence-grounded member intelligence. It is a React/Vite dashboard backed by an Express API, shared Zod contracts, an in-memory knowledge graph, and the OpenAI Responses API. The only member is the supplied fictional Jordan Rivera.
+Coach Copilot is a local MVP for safe, explainable workout generation and evidence-grounded member intelligence. The React/Vite dashboard talks to an Express API backed by PostgreSQL, Drizzle repositories, LangGraph `StateGraph` workflows, shared Zod contracts, and the direct OpenAI Responses API.
 
-The design rule is simple: the model interprets and phrases; deterministic code owns safety, equipment, exercise selection, calculations, citations, and chart data.
+The design rule is simple: the model interprets and phrases; deterministic code owns safety, graph traversal, equipment selection, calculations, citations, charts, persistence, and final validation.
 
-## Run locally
+See [architecture.md](architecture.md) for the system diagrams, table ownership, graph versioning, ingestion lifecycle, workflow/checkpoint boundary, safety invariants, recovery behavior, and the threshold for considering Neo4j.
 
-Requirements: Node.js 22+ and an OpenAI API key.
+## Local setup
+
+Requirements: Node.js 22+, Docker, and npm. An OpenAI key is optional unless live mode is required. No LangGraph, LangChain, or LangSmith account or key is needed.
 
 ```bash
 npm install
 cp .env.example .env
-# add OPENAI_API_KEY to .env
 chmod 600 .env
+npm run db:start
+npm run db:setup
 npm run dev
 ```
 
-Open <http://127.0.0.1:5173>, click **Continue as Sam**, and choose either product surface. The API listens at <http://127.0.0.1:3001>. `.env` is server-only, ignored by Git, and never returned or logged. `/api/health` exposes only whether a key is configured, the model name, and graph readiness.
+Open <http://127.0.0.1:5173>, click **Continue as Sam**, and choose either product surface. The API listens at <http://127.0.0.1:3001>.
 
-`OPENAI_MODEL` defaults to `gpt-5.6-luna`, reasoning defaults to `low`, and every provider request uses `store: false`. Without a key the app remains usable in visibly labeled deterministic-fallback mode. With `REQUIRE_LIVE_MODEL=true`, fallback, refusals, timeouts, schema failures, and incorrect call counts are hard failures.
+`db:setup` applies Drizzle migrations, validates and ingests the supplied JSON fixtures into typed tables plus an immutable graph version, and initializes LangGraph checkpoint tables in a separate `langgraph` schema. Production startup never creates tables, loads JSON, or silently falls back when PostgreSQL is unavailable.
+
+Set `OPENAI_API_KEY` in `.env` for live responses. Without it, the app remains usable in visibly labeled deterministic-fallback mode. With `REQUIRE_LIVE_MODEL=true`, fallback, refusal, timeout, schema failure, and incorrect model-call count are hard failures. Provider requests use `store: false`; `.env` is ignored by Git.
+
+Health endpoints:
+
+- `GET /api/health` preserves the lightweight key/model/graph contract.
+- `GET /api/ready` verifies PostgreSQL, migrations, seed/catalog data, the active graph version, and LangGraph checkpoint readiness; it returns `503` if production dependencies are incomplete.
 
 ## Product surfaces
 
-- **Workout Generator:** prompt and duration controls, graph-recomputed adjustments, warmup/main/cooldown phases, equipment and injury constraints, safety notes, exclusions, and expandable provenance.
-- **Coach AI Copilot:** quick prompts, free-form questions, model-selected graph topics for broad requests, eight-turn in-memory context and targeted follow-ups, grounded conversational narratives, deterministic charts, attachment placeholders, unavailable-data handling, and expandable sentence citations.
+- **Workout Generator:** graph-recomputed plans and adjustments, warmup/main/cooldown phases, equipment and injury constraints, safety notes, exclusions, and expandable provenance.
+- **Coach AI Copilot:** quick prompts, free-form questions, persisted multi-turn context, model-selected topics for broad requests, deterministic charts, attachment metadata, unavailable-data handling, and sentence-level citations.
 
-## Architecture
+Both successful live workflows make exactly two model calls: structured intent, then constrained phrasing. LangGraph sequences load, execution, validation, and persistence nodes; it does not provide agents or model-controlled tools.
 
-```mermaid
-flowchart LR
-  UI["React + Vite dashboard"] --> API["Express API"]
-  API --> Z["Shared Zod contracts"]
-  API --> WG["Workout workflow"]
-  API --> CA["Copilot workflow"]
-  WG --> KG["In-memory knowledge graph"]
-  CA --> KG
-  KG --> D["Supplied fictional JSON"]
-  WG --> OAI["OpenAI Responses API"]
-  CA --> OAI
-  WG --> V["Runtime invariant validation"]
-  CA --> V
-  V --> UI
-```
+## Persistence model
 
-Both successful live workflows make exactly two provider calls:
+PostgreSQL is canonical for:
 
-```mermaid
-sequenceDiagram
-  participant U as Coach
-  participant A as Express API
-  participant M as gpt-5.6-luna
-  participant G as Deterministic graph/code
-  U->>A: Request
-  A->>M: 1. Parse structured intent
-  M-->>A: Validated Zod intent
-  A->>G: Resolve, retrieve, filter, compute, assemble
-  G-->>A: Approved result + evidence
-  A->>M: 2. Phrase constrained output
-  M-->>A: Structured cited narrative
-  A->>A: Validate IDs, citations, numbers, safety
-  A-->>U: Final response + two call traces
-```
+- organizations, coaches, members, goals, preferences, equipment, and conditions;
+- workouts, adherence, biometrics, labs, conversations, messages, attachments, briefs, and risk assessments;
+- generated plans, decisions, evidence, workflow runs, and model-call traces;
+- raw ingestion lineage and immutable `graph_versions`, `graph_nodes`, and `graph_edges`.
 
-The SDK integration follows the official [Responses structured-output pattern](https://developers.openai.com/api/docs/guides/structured-outputs). The configured model is documented by OpenAI as supporting Responses and structured outputs: [gpt-5.6-luna model documentation](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
+`graph_nodes` are the entity/concept nodes and `graph_edges` are their relationships. Composite foreign keys prevent an edge from pointing outside its graph version. Only one validated version may be active.
 
-## Knowledge graph
+The active domain graph—exercise, anatomy, equipment, and movement concepts—is reconstructed from PostgreSQL at startup and cached. Typed rows for the requested member are composed into a request-local member overlay. The active version is checked on a 30-second TTL and swapped atomically when a new validated version appears.
 
-The graph is rebuilt at server startup using adjacency maps. The current supplied data produces 160 nodes and 418 edges.
+The supplied fictional JSON remains in `data/` only as seed/test input. The current seed creates 149 domain nodes and 407 domain edges; composing Jordan's member overlay produces the existing 160-node, 418-edge request graph.
 
-| Node | Meaning |
-| --- | --- |
-| `Exercise` | A supplied catalog exercise and its original fields |
-| `Anatomy` | Muscles, joints, and the reviewed knee hierarchy |
-| `Equipment` | Required or member-available equipment concepts |
-| `MovementPattern` | Supplied movement-pattern taxonomy |
-| `InjuryOrCondition` | Jordan's active/recovering condition |
-| `Member` | Jordan's fictional member identity |
-| `MemberFact` | Goals, preferences, workouts, adherence, biomarkers, labs, chat, and brief |
-
-| Edge | Semantics |
-| --- | --- |
-| `targets` | Exercise engages an anatomy/muscle concept |
-| `stresses` | Exercise loads a joint/anatomy concept |
-| `requires` | Exercise requires equipment |
-| `uses_movement_pattern` | Exercise belongs to a movement pattern |
-| `part_of` | Anatomy child-to-parent hierarchy |
-| `affects` / `has_condition` | Member condition path to anatomy |
-| `has_fact` | Member-to-fact retrieval link |
-| `references`, `exact_match`, `alias_of`, `close_match` | Retrieval and concept-mapping semantics |
-
-Every evidence record carries the source label and, where applicable, JSON pointer, date, graph path, ontology URI, and derivation rule.
-
-### Ontology choices
-
-- [OPE](https://bioportal.bioontology.org/ontologies/OPE) provides the modeling boundary: exercise, functional movement, musculoskeletal anatomy, and equipment. The alpha ontology is used as design inspiration; its OWL is not imported wholesale.
-- Internal canonical concepts use SKOS-style exact/alias/close mappings. Resolution order is normalized exact match, curated aliases, fuzzy match with a `0.72` threshold and `0.08` ambiguity margin, then unresolved.
-- The reviewed anatomy overlay is `patella / patellofemoral area → knee joint → knee region`. The two active SNOMED CT mappings were checked through NCI EVS: [49076000, Knee joint structure](https://api-evsrest.nci.nih.gov/api/v1/concept/snomedct_us/49076000) and [72696002, Knee region structure](https://api-evsrest.nci.nih.gov/api/v1/concept/snomedct_us/72696002).
-- PROV-O ideas inform evidence lineage, but the MVP uses plain TypeScript records rather than RDF infrastructure.
-- COPPER, SHACL, full SNOMED ingestion, a graph database, and vector search are intentionally outside the MVP. None is needed to demonstrate the required runtime traversal.
+Canonical conversations and generated plans are stored in application tables, so follow-ups and base-plan adjustments survive restarts. LangGraph checkpoints are separate execution state and are never treated as the member database or knowledge graph.
 
 ## Safety and grounding
 
-For Jordan's mild recovering knee condition, deterministic code:
+For the supplied recovering knee condition, deterministic code:
 
-1. Traverses the condition through the patellofemoral area to the knee parent.
-2. Removes plyometrics/high-impact jumps.
-3. Removes the reviewed deep-loaded-flexion exercise.
-4. Penalizes rather than blanket-removes ordinary knee-loading strength work.
-5. Adds a shallow, symptom-free-range instruction and safety citation.
-6. Intersects every selected exercise with Jordan's actual equipment.
+1. Traverses condition → patellofemoral area → knee.
+2. Removes knee-loading plyometrics and reviewed deep loaded knee flexion.
+3. Down-ranks rather than blanket-removes ordinary knee-loading strength work.
+4. Adds a shallow, symptom-free-range instruction and safety evidence.
+5. Intersects every selected exercise with the member's available/requested equipment.
 
-Unknown anatomy returns `needs_clarification` and no plan. An adjustment references `basePlanId` and recomputes selection from the graph. Model-written workout notes are rejected if they mention unknown exercises/evidence or contradict safety.
+Unknown anatomy returns `needs_clarification` and no plan. Every workout prescription must reference included evidence. Copilot retrieval, calculations, charts, and citation validation remain deterministic. Blood pressure is reported unavailable; vitamin D is reported as supplied without diagnosing deficiency because no reference range is present.
 
-Copilot retrieval and calculations are deterministic. Each narrative item must cite retrieved evidence; cited IDs must exist; numeric tokens must appear in cited raw/derived evidence; chart points never come from the model. Citations are numbered once against the answer's evidence packet and remain stable across the response. Blood pressure is reported unavailable. Vitamin D is reported as `28 ng/mL` on the supplied date without diagnosing deficiency because the source contains no reference range.
+This is coaching support over synthetic data, not medical advice. Real member/PHI use requires authentication, authorization, tenant RLS, audit/retention policy, encryption controls, and a vendor/privacy review; those are outside this refactor.
 
-This is coaching support over synthetic data, not medical advice. The graph cannot infer conditions, clinical causality, reference ranges, or clearance beyond what the supplied record states.
-
-## Scripts
+## Database commands
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Run API and dashboard together |
-| `npm run typecheck` | Check client/shared/server TypeScript |
-| `npm run lint` | Lint implementation and test code |
-| `npm test` | Deterministic units and API integration with controlled model responses |
-| `npm run test:evals` | Full 20-workout + 24-Copilot controlled semantic matrix and follow-ups |
-| `npm run test:live` | Full unretried matrix using the real key; writes ignored evidence to `artifacts/live-evaluation.json` |
-| `npm run test:quality:live` | 30 natural workout/Copilot interactions with follow-ups, citation relevance, answer-scope, and safety checks |
+| `npm run db:start` | Start PostgreSQL 17 on `127.0.0.1:5434` |
+| `npm run db:stop` | Stop the local PostgreSQL container without deleting its volume |
+| `npm run db:migrate` | Apply Drizzle application migrations |
+| `npm run db:seed` | Validate and idempotently ingest JSON fixtures by SHA-256 hash |
+| `npm run db:langgraph:setup` | Explicitly initialize the `langgraph` checkpoint schema |
+| `npm run db:setup` | Run migrate, seed, and checkpoint setup in order |
+| `npm run db:test:setup` | Destructively reset only `TEST_DATABASE_URL`; refuses names without `_test` suffix |
+
+The default development URLs are documented in `.env.example`. `coach_copilot_test` is physically separate from the development database.
+
+## Verification commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run lint` | Lint application, scripts, evaluations, and tests |
+| `npm run typecheck` | Check client, server, scripts, evaluations, and tests |
+| `npm test` | Unit/API tests using in-memory repositories and `MemorySaver` |
+| `npm run test:evals` | Controlled semantic matrix and follow-up coverage |
+| `npm run test:db` | Guarded PostgreSQL reset plus migration, ingestion, integrity, persistence, restart, and checkpoint tests |
 | `npm run test:e2e` | Offline Playwright browser flows |
-| `npm run test:e2e:live` | Live Playwright flows; real responses required |
 | `npm run build` | Production client and server build |
-| `npm run verify` | Run every static, controlled, build, offline-browser, live-eval, and live-browser gate |
+| `npm run verify:offline` | Static, unit/API, controlled eval, database, build, and offline browser gates |
+| `npm run test:live` | Full unretried matrix using the real key |
+| `npm run test:quality:live` | Natural-language live quality audit |
+| `npm run test:e2e:live` | Live Playwright flows |
+| `npm run verify` | Offline gate followed by all live gates |
 
-## Verified generated examples
+Live commands require both PostgreSQL setup and `OPENAI_API_KEY`. They write ignored evidence under `artifacts/`.
 
-The following text is copied from the successful, unretried `gpt-5.6-luna` evaluation run on 2026-08-12, not handwritten sample copy.
+## Evaluation status
 
-**Injury-aware workout — W01**
+Before this persistence refactor, the controlled suite contained 12 unit/API tests, 47 controlled evaluation cases, and 6 offline browser tests, all passing. The prior live evidence remains documented in [docs/EVALUATION.md](docs/EVALUATION.md). Live provider/browser gates should be rerun when a usable credential is present; they are not implied by a successful offline run.
 
-> 30-minute lower body session
->
-> Maintain shallow, comfortable ranges for knee-loading movements and stop if knee symptoms or pain increase. Knee-loading jumps and deep loaded knee flexion are excluded.
-
-The response was `mode=live`, `modelCallCount=2`, and totaled exactly 30 minutes.
-
-**Limited equipment — W05**
-
-> 30-minute full body session
->
-> Walking Toe Touches · Alternating Dumbbell Overhead Press · Dumbbell Goblet Split Squat · Alternating Dumbbell Racked Crossback Lunge · Standing Neck Circles
-
-No selected movement required equipment outside Jordan's dumbbells/kettlebell constraint; the response was `mode=live`, `modelCallCount=2`.
-
-**Copilot adherence — C04**
-
-> Weekly workout completion was 100%, 100%, 75%, and 50% over the supplied four weeks.
->
-> That is a 50 percentage-point decrease from the first supplied week to the latest.
-
-The deterministic chart contains `05-12: 100`, `05-19: 100`, `05-26: 75`, and `06-02: 50`.
-
-**Copilot sleep — C06**
-
-> The seven supplied readings average 6.3 hours (43.9 hours divided by 7).
->
-> Two of the seven readings were at or above 7 hours.
-
-## Evaluation result
-
-The original live matrix passed **43/44 (97.7%)** in one unretried run with no critical failures. After a second natural-language quality/fix cycle, the final 30-interaction live audit passed **30/30 (100%)** with relevant citations and exactly scoped answers. All 14 live browser tests passed; offline browser tests cover desktop, tablet, and phone. Full scenario results, browser coverage, latency/token summaries, and limitations are in [docs/EVALUATION.md](docs/EVALUATION.md).
-
-Production evaluation should retain these invariant checks, add held-out paraphrases and adversarial prompts, stratify semantic graders by topic, monitor latency/token distributions, and require human review of safety-rule changes. A green schema parse alone is not a quality result; the final visible answer and citations are what the suite evaluates.
-
-## AI-use disclosure
-
-OpenAI models are used only at runtime for structured intent parsing and constrained phrasing. Codex assisted with the implementation, documentation, and test construction. Safety rules, derived metrics, source data, expected facts, and validation criteria remain explicit in repository code/tests and are independently inspectable.
-
-## Source material and scope
+## Sources and scope
 
 - [Assessment](docs/assignment/ASSESSMENT.md)
 - [Pinned upstream source](docs/assignment/SOURCE.md)
-- [Exercise catalog](data/exercises.json)
-- [Synthetic member context](data/member-context.json)
+- [Exercise seed](data/exercises.json)
+- [Synthetic member seed](data/member-context.json)
 - [Implementation plan](plan.md)
 
-No database, vector store, deployment, external resource, real member record, or multi-agent runtime is included.
+Neo4j, LangChain agents, LangSmith tracing, authentication, cloud deployment, real member ingestion, vector search, and object storage are intentionally deferred. PostgreSQL remains the canonical application and graph store.

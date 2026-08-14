@@ -6,6 +6,9 @@ export interface AppConfig {
   reasoningEffort: "none" | "low" | "medium" | "high";
   apiKey?: string;
   requireLiveModel: boolean;
+  databaseUrl?: string;
+  graphRefreshMs?: number;
+  demoMemberId?: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -20,5 +23,8 @@ export function loadConfig(): AppConfig {
     reasoningEffort,
     apiKey: process.env.DISABLE_LIVE_MODEL === "true" ? undefined : process.env.OPENAI_API_KEY,
     requireLiveModel: process.env.REQUIRE_LIVE_MODEL === "true",
+    databaseUrl: process.env.DATABASE_URL,
+    graphRefreshMs: Number(process.env.GRAPH_REFRESH_MS ?? 30_000),
+    demoMemberId: process.env.DEMO_MEMBER_ID ?? "mbr_01HX9JORDAN",
   };
 }

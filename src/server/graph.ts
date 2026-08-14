@@ -146,7 +146,7 @@ export class KnowledgeGraph {
 
 const source = (jsonPointer: string): Provenance => ({ source: "data/exercises.json", jsonPointer });
 
-export function buildGraph(exercises: ExerciseRecord[], member: MemberContext): KnowledgeGraph {
+export function buildDomainGraph(exercises: ExerciseRecord[]): KnowledgeGraph {
   const graph = new KnowledgeGraph();
 
   exercises.forEach((exercise, exerciseIndex) => {
@@ -190,6 +190,12 @@ export function buildGraph(exercises: ExerciseRecord[], member: MemberContext): 
   graph.addEdge({ source: "anatomy:patellofemoral-area", target: "anatomy:knee", type: "part_of", properties: {}, provenance: ontologySource });
   graph.addEdge({ source: "anatomy:knee", target: "anatomy:knee-region", type: "part_of", properties: {}, provenance: ontologySource });
 
+  return graph;
+}
+
+export function buildMemberGraph(member: MemberContext): KnowledgeGraph {
+  const graph = new KnowledgeGraph();
+
   const memberId = `member:${member.profile.id}`;
   graph.ensureNode(memberId, "Member", member.profile.name, { ...member.profile }, { source: "data/member-context.json", jsonPointer: "/profile" });
 
@@ -197,7 +203,12 @@ export function buildGraph(exercises: ExerciseRecord[], member: MemberContext): 
     const injuryId = `condition:${injury.id}`;
     graph.ensureNode(injuryId, "InjuryOrCondition", injury.region, { ...injury }, { source: "data/member-context.json", jsonPointer: `/injuries/${index}` });
     graph.addEdge({ source: memberId, target: injuryId, type: "has_condition", properties: {}, provenance: { source: "data/member-context.json", jsonPointer: `/injuries/${index}` } });
-    graph.addEdge({ source: injuryId, target: "anatomy:patellofemoral-area", type: "affects", properties: { laterality: "left" }, provenance: { source: "data/member-context.json", jsonPointer: `/injuries/${index}/notes` } });
+    const mappedConceptId = injury.mapped_concept_id
+      ?? (/knee|patell/i.test(`${injury.joint} ${injury.region}`) ? "anatomy:patellofemoral-area" : `anatomy:${slug(injury.joint || injury.region)}`);
+    if (mappedConceptId !== "anatomy:patellofemoral-area") {
+      graph.ensureNode(mappedConceptId, "Anatomy", injury.joint || injury.region, { subtype: "member_condition_target" }, { source: "typed member condition", jsonPointer: `/injuries/${index}` });
+    }
+    graph.addEdge({ source: injuryId, target: mappedConceptId, type: "affects", properties: { region: injury.region }, provenance: { source: "data/member-context.json", jsonPointer: `/injuries/${index}/notes` } });
   });
 
   const factGroups: Array<[string, unknown, string]> = [
@@ -218,4 +229,16 @@ export function buildGraph(exercises: ExerciseRecord[], member: MemberContext): 
   }
 
   return graph;
+}
+
+export function composeGraph(domainGraph: KnowledgeGraph, member: MemberContext): KnowledgeGraph {
+  const graph = new KnowledgeGraph();
+  const memberGraph = buildMemberGraph(member);
+  for (const node of [...domainGraph.nodes.values(), ...memberGraph.nodes.values()]) graph.addNode(node);
+  for (const edge of [...domainGraph.edges.values(), ...memberGraph.edges.values()]) graph.addEdge(edge);
+  return graph;
+}
+
+export function buildGraph(exercises: ExerciseRecord[], member: MemberContext): KnowledgeGraph {
+  return composeGraph(buildDomainGraph(exercises), member);
 }

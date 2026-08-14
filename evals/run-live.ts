@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createApp } from "../src/server/app.js";
 import { loadConfig } from "../src/server/config.js";
+import { createProductionRuntime } from "../src/server/runtime.js";
 import { member } from "../src/server/data.js";
 import { copilotScenarios, workoutScenarios } from "./scenarios.js";
 
@@ -8,7 +9,8 @@ interface Result { id: string; workflow: "workout" | "copilot"; passed: boolean;
 
 const config = { ...loadConfig(), requireLiveModel: true };
 if (!config.apiKey) throw new Error("OPENAI_API_KEY is required for npm run test:live");
-const { app } = createApp(config);
+const runtime = await createProductionRuntime(config);
+const { app } = createApp(config, runtime);
 const server = app.listen(0, "127.0.0.1");
 await new Promise<void>((resolve) => server.once("listening", resolve));
 const address = server.address();
@@ -56,6 +58,7 @@ try {
   }
 } finally {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await runtime.close();
 }
 
 const passed = results.filter((result) => result.passed).length;

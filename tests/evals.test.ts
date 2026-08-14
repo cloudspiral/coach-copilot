@@ -3,15 +3,17 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../src/server/app.js";
 import type { AppConfig } from "../src/server/config.js";
 import { member } from "../src/server/data.js";
+import { createTestRuntime } from "../src/server/test-runtime.js";
 import { copilotScenarios, workoutScenarios } from "../evals/scenarios.js";
 import { makeControlledGateway } from "./helpers.js";
 
 const config: AppConfig = { port: 3001, model: "gpt-5.6-luna", reasoningEffort: "low", apiKey: "controlled", requireLiveModel: true };
 const available = new Set(member.equipment_available);
+const gateway = makeControlledGateway();
+const runtime = await createTestRuntime(config, gateway);
+const { app } = createApp(config, runtime);
 
 describe("controlled semantic evaluation matrix", () => {
-  const { app } = createApp(config, makeControlledGateway());
-
   for (const scenario of workoutScenarios) {
     it(`${scenario.id} ${scenario.prompt}`, async () => {
       const response = await request(app).post("/api/workouts/generate").send({ memberId: member.profile.id, prompt: scenario.prompt, durationMinutes: scenario.durationMinutes });
