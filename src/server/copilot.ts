@@ -16,7 +16,9 @@ import type { StructuredModelGateway } from "./openai.js";
 interface ConversationTurn {
   message: string;
   topic: CopilotTopic;
+  topics: CopilotTopic[];
   headline: string;
+  answer: string;
 }
 
 interface GroundedBundle {
@@ -34,6 +36,7 @@ export interface CopilotResponse {
   traceId: string;
   conversationId: string;
   topic: CopilotTopic;
+  topics: CopilotTopic[];
   answer: CopilotAnswer;
   chart: ChartSpec | null;
   attachments: Array<{ type: string; caption: string }>;
@@ -43,6 +46,22 @@ export interface CopilotResponse {
 
 const riskyMedicalLanguage = /diagnos|clinically deficient|disease|medical advice|definitely caused|proves that/i;
 const rawEvidenceReference = /\bev-c-\d+\b/i;
+const broadGraphTopics: CopilotTopic[] = [
+  "workout",
+  "adherence",
+  "sleep",
+  "weight",
+  "biomarkers",
+  "labs",
+  "dexa",
+  "churn",
+  "knee",
+  "injuries",
+  "equipment",
+  "goals",
+  "chat",
+  "attachments",
+];
 
 function routeTopic(message: string, prior?: CopilotTopic): CopilotIntent {
   const text = message.toLowerCase();
@@ -77,6 +96,7 @@ function routeTopic(message: string, prior?: CopilotTopic): CopilotIntent {
 
   return {
     topic,
+    relatedTopics: [],
     timeHorizon: /last four weeks/.test(text) ? "last four weeks" : /this week/.test(text) ? "this week" : null,
     requestedChart: /plot|chart|trend|compare/.test(text),
     entities: [],
@@ -85,11 +105,11 @@ function routeTopic(message: string, prior?: CopilotTopic): CopilotIntent {
 }
 
 function intentSystemPrompt(): string {
-  return `Route a coach's question about one synthetic member into the supplied topic schema. Use recent conversation context for pronouns and follow-ups. Do not answer the question. Never infer missing clinical conclusions. Unknown or unavailable topics route to unavailable.`;
+  return `Choose which graph-backed member topics are needed to answer the coach's question. Select from availableGraphTopics in the input. Put the most relevant topic in topic and up to three additional useful, non-duplicative topics in relatedTopics. For broad questions such as how the member is doing overall, choose a small set of atomic topics; do not reduce the request to the prewritten brief. For narrow questions and follow-ups, choose only the specifically requested topic and leave relatedTopics empty. Use recent conversation context for pronouns and follow-ups, including requests for information omitted from an earlier answer. Do not answer the question. Never infer missing clinical conclusions. Unknown or unavailable requests route to unavailable.`;
 }
 
 function answerSystemPrompt(): string {
-  return `Phrase the supplied deterministic draft as a concise coach-facing answer to the exact question. Preserve every number and qualification exactly. Each claim must cite one or more evidence IDs from the supplied evidence and may cite only those IDs. Put citations only in evidenceIds; never write internal evidence IDs in prose. Do not add facts, causes, diagnoses, reference ranges, or recommendations. Keep unavailable information explicitly unavailable.`;
+  return `Turn the supplied graph-backed candidate facts into a natural, conversational answer to the coach's exact question. Select the most useful facts; do not mechanically repeat every candidate or write a task list/dashboard brief. The narrative array is an ordered sequence with one complete sentence per item so each displayed sentence ends with its citations. Use transitions and lead with the direct takeaway. For a narrow follow-up, answer only that follow-up. Preserve every number and qualification you use exactly. Each narrative item must cite one or more evidence IDs from the supplied evidence and may cite only those IDs. Put citations only in evidenceIds; never write internal evidence IDs in prose. Do not add facts, causes, diagnoses, reference ranges, or recommendations. Keep unavailable information explicitly unavailable.`;
 }
 
 function numericTokens(value: string): string[] {
@@ -98,12 +118,12 @@ function numericTokens(value: string): string[] {
 
 function validateAnswer(answer: CopilotAnswer, evidence: EvidenceRecord[]): boolean {
   const byId = new Map(evidence.map((item) => [item.id, item]));
-  const prose = [answer.headline, ...answer.claims.map((claim) => claim.text), answer.followUpSuggestion].join(" ");
-  if (!answer.claims.length || riskyMedicalLanguage.test(prose) || rawEvidenceReference.test(prose)) return false;
-  return answer.claims.every((claim) => {
-    if (!claim.evidenceIds.length || claim.evidenceIds.some((id) => !byId.has(id))) return false;
-    const support = claim.evidenceIds.map((id) => byId.get(id)?.detail ?? "").join(" ");
-    return numericTokens(claim.text).every((token) => support.includes(token));
+  const prose = [answer.headline, ...answer.narrative.map((item) => item.text), answer.followUpSuggestion].join(" ");
+  if (!answer.narrative.length || riskyMedicalLanguage.test(prose) || rawEvidenceReference.test(prose)) return false;
+  return answer.narrative.every((item) => {
+    if (!item.evidenceIds.length || item.evidenceIds.some((id) => !byId.has(id))) return false;
+    const support = item.evidenceIds.map((id) => byId.get(id)?.detail ?? "").join(" ");
+    return numericTokens(item.text).every((token) => support.includes(token));
   });
 }
 
@@ -124,9 +144,9 @@ function buildBundle(member: MemberContext, topic: CopilotTopic, question: strin
     graphPath: [`member:${member.profile.id}`, "has_fact", `fact:${member.profile.id}:${jsonPointer.split("/")[1] || "profile"}`],
     ruleId,
   });
-  const answer = (headline: string, claims: Array<[string, string[]]>, followUpSuggestion: string): CopilotAnswer => ({
+  const answer = (headline: string, narrative: Array<[string, string[]]>, followUpSuggestion: string): CopilotAnswer => ({
     headline,
-    claims: claims.map(([text, evidenceIds]) => ({ text, evidenceIds })),
+    narrative: narrative.map(([text, evidenceIds]) => ({ text, evidenceIds })),
     followUpSuggestion,
   });
   let chart: ChartSpec | null = null;
@@ -134,12 +154,12 @@ function buildBundle(member: MemberContext, topic: CopilotTopic, question: strin
 
   if (topic === "brief" || topic === "today") {
     const tasks = source("Morning brief", `For ${member.coach_brief.generated_for}; the referenced workout was June 3: ${member.coach_brief.morning_tasks.map((item) => item.text).join(" ")}`, "/coach_brief/morning_tasks", member.coach_brief.generated_for);
-    const knee = source("Knee condition", member.injuries[0].notes, "/injuries/0", member.injuries[0].since);
     const adherence = source("Four-week adherence", "Weekly completion was 100%, 100%, 75%, and 50%; the supplied trend is declining.", "/adherence");
+    const knee = source("Knee condition", member.injuries[0].notes, "/injuries/0", member.injuries[0].since);
     return { answer: answer("Jordan's coaching brief", [
-      ["Celebrate Jordan's June 3 lower-body completion and first reported pain-free squat work since the flare-up.", [tasks]],
-      ["Adherence is flagged for review after weekly completion moved from 100% to 50% across the supplied four weeks.", [adherence]],
-      ["Keep the recovering left knee in view: the supplied guidance allows low-impact loading while avoiding deep loaded knee flexion and plyometrics.", [knee]],
+      ["The positive news is that Jordan completed her June 3 lower-body session and reported her first pain-free squat work since the flare-up.", [tasks]],
+      ["The main concern is adherence, which moved from 100% to 50% across the supplied four weeks.", [adherence]],
+      ["Her recovering left knee should still guide programming: keep loading low-impact and avoid deep loaded knee flexion and plyometrics.", [knee]],
     ], "Ask me to draft the congratulations message."), evidence, chart, attachments };
   }
 
@@ -255,8 +275,9 @@ function buildBundle(member: MemberContext, topic: CopilotTopic, question: strin
   }
 
   if (topic === "injuries") {
-    const id = source("Active constraint", member.injuries[0].notes, "/injuries/0", member.injuries[0].since);
-    return { answer: answer("Remember the recovering left knee", [["Jordan has mild recovering patellofemoral pain and is cleared for low-impact loading, while deep knee flexion under load and plyometrics should be avoided.", [id]]], "Generate a knee-aware workout."), evidence, chart, attachments };
+    const injury = member.injuries[0];
+    const id = source("Active constraint", `${injury.severity} ${injury.status} condition affecting the ${injury.region}. ${injury.notes}`, "/injuries/0", injury.since);
+    return { answer: answer("Remember the recovering left knee", [["Jordan has mild recovering patellofemoral pain in her left knee and is cleared for low-impact loading, while deep knee flexion under load and plyometrics should be avoided.", [id]]], "Generate a knee-aware workout."), evidence, chart, attachments };
   }
 
   if (topic === "equipment") {
@@ -301,6 +322,37 @@ function buildBundle(member: MemberContext, topic: CopilotTopic, question: strin
   return { answer: answer("That information is not available", [["Blood pressure or the requested information is not available in the provided member data.", [inventory]]], "Ask about a supplied topic such as adherence, sleep, workouts, labs, or equipment."), evidence, chart, attachments };
 }
 
+function buildSelectedBundle(member: MemberContext, topics: CopilotTopic[], question: string, requestedChart: boolean): GroundedBundle {
+  const bundles = topics.map((topic) => buildBundle(member, topic, question));
+  if (bundles.length === 1) return bundles[0];
+
+  const evidence: EvidenceRecord[] = [];
+  const narrative: CopilotAnswer["narrative"] = [];
+  for (const bundle of bundles) {
+    const idMap = new Map<string, string>();
+    for (const record of bundle.evidence) {
+      const id = `ev-c-${evidence.length + 1}`;
+      idMap.set(record.id, id);
+      evidence.push({ ...record, id });
+    }
+    narrative.push(...bundle.answer.narrative.map((item) => ({
+      text: item.text,
+      evidenceIds: item.evidenceIds.flatMap((id) => idMap.get(id) ?? []),
+    })));
+  }
+
+  return {
+    answer: {
+      headline: "Here's what stands out from Jordan's record",
+      narrative,
+      followUpSuggestion: "Ask about any area you want to explore further.",
+    },
+    evidence,
+    chart: requestedChart ? bundles.find((bundle) => bundle.chart)?.chart ?? null : null,
+    attachments: bundles.flatMap((bundle) => bundle.attachments),
+  };
+}
+
 export class CopilotService {
   private readonly conversations = new Map<string, ConversationTurn[]>();
 
@@ -326,12 +378,18 @@ export class CopilotService {
           schemaName: "copilot_intent",
           schema: CopilotIntentSchema,
           system: intentSystemPrompt(),
-          user: JSON.stringify({ message: request.message, recentConversation: history.slice(-8) }),
+          user: JSON.stringify({
+            message: request.message,
+            availableGraphTopics: broadGraphTopics,
+            recentConversation: history.slice(-8),
+          }),
         });
         modelCalls.push(result.trace);
+        const modelSelectsTopics = deterministicIntent.topic === "unavailable" && !/blood[- ]pressure/i.test(request.message);
         intent = {
           ...result.value,
-          topic: deterministicIntent.topic === "unavailable" && !/blood[- ]pressure/i.test(request.message) ? result.value.topic : deterministicIntent.topic,
+          topic: modelSelectsTopics ? result.value.topic : deterministicIntent.topic,
+          relatedTopics: modelSelectsTopics ? result.value.relatedTopics : [],
           requestedChart: deterministicIntent.requestedChart || result.value.requestedChart,
         };
         mode = "live";
@@ -342,7 +400,9 @@ export class CopilotService {
       throw new Error("Live model required but OPENAI_API_KEY is not configured");
     }
 
-    const bundle = buildBundle(this.member, intent.topic, request.message);
+    let topics = [...new Set([intent.topic, ...intent.relatedTopics])].slice(0, 4);
+    if (topics.some((topic) => topic !== "unavailable")) topics = topics.filter((topic) => topic !== "unavailable");
+    const bundle = buildSelectedBundle(this.member, topics, request.message, intent.requestedChart);
     let answer = bundle.answer;
     if (mode === "live") {
       try {
@@ -351,7 +411,7 @@ export class CopilotService {
           schemaName: "copilot_answer",
           schema: CopilotAnswerSchema,
           system: answerSystemPrompt(),
-          user: JSON.stringify({ question: request.message, deterministicDraft: bundle.answer, evidence: bundle.evidence }),
+          user: JSON.stringify({ question: request.message, candidateAnswer: bundle.answer, evidence: bundle.evidence }),
         });
         modelCalls.push(result.trace);
         if (validateAnswer(result.value, bundle.evidence)) answer = result.value;
@@ -362,7 +422,15 @@ export class CopilotService {
     }
     if (this.config.requireLiveModel && (mode !== "live" || modelCalls.length !== 2)) throw new Error(`Live Copilot required exactly two model calls; observed ${modelCalls.length}`);
 
-    const updated = [...history, { message: request.message, topic: intent.topic, headline: answer.headline }].slice(-8);
+    const citedIds = new Set(answer.narrative.flatMap((item) => item.evidenceIds));
+    const citedEvidence = bundle.evidence.filter((record) => citedIds.has(record.id));
+    const updated = [...history, {
+      message: request.message,
+      topic: intent.topic,
+      topics,
+      headline: answer.headline,
+      answer: answer.narrative.map((item) => item.text).join(" "),
+    }].slice(-8);
     this.conversations.set(conversationId, updated);
     return {
       status: "ready",
@@ -372,10 +440,11 @@ export class CopilotService {
       traceId,
       conversationId,
       topic: intent.topic,
+      topics,
       answer,
       chart: bundle.chart,
       attachments: bundle.attachments,
-      evidence: bundle.evidence,
+      evidence: citedEvidence,
       modelCalls,
     };
   }

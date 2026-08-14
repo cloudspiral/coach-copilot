@@ -188,8 +188,9 @@ legend { margin-bottom: 9px; font-weight: 700; font-size: 12px; }
 .answer-header { display: flex; gap: 11px; align-items: center; margin-bottom: 17px; }
 .answer-header span { color: var(--muted); font-size: 9px; }
 .answer-header h3 { margin: 2px 0 0; font-size: 17px; }
-.claim { padding: 11px 0; border-top: 1px solid #20332c; }
-.claim p { display: inline; margin: 0 7px 0 0; color: #dce6e2; font-size: 12px; }
+.answer-narrative { display: grid; gap: 12px; }
+.narrative-line { color: #dce6e2; font-size: 12px; line-height: 1.65; }
+.narrative-line p { display: inline; margin: 0 7px 0 0; }
 .followup { display: block; margin-top: 13px; padding: 9px 11px; color: var(--cyan); border: 1px solid #294a52; border-radius: 8px; background: #102129; font-size: 10px; text-align: left; }
 .chart-card { margin-top: 15px; padding: 15px; border: 1px solid #2b423a; border-radius: 11px; background: #0c1714; }
 .chart-card h4 { margin: 4px 0 10px; font-size: 13px; }

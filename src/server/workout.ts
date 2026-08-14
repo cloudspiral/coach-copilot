@@ -297,19 +297,44 @@ export class WorkoutService {
 
     const decisions: DecisionTrace[] = [];
     const candidates: Candidate[] = [];
-    const activeKnee = this.member.injuries.some((injury) => injury.joint === "knee" && injury.status === "recovering");
+    const memberId = `member:${this.member.profile.id}`;
+    const affectedAnatomy = this.graph.affectedAnatomyPaths(memberId);
+    const kneeAnatomyIds = new Set(
+      [...affectedAnatomy.keys()].filter((nodeId) => (
+        this.graph.ancestors(nodeId).has("anatomy:knee")
+        || this.graph.ancestors("anatomy:knee").has(nodeId)
+      )),
+    );
+    const kneeConstraintPath = affectedAnatomy.get("anatomy:knee");
+    const activeKnee = Boolean(kneeConstraintPath && kneeAnatomyIds.size);
     const lumbarConcern = intent.safetyTerms.some((term) => normalize(term).includes("lumbar"));
 
     this.exercises.forEach((exercise, index) => {
       const exerciseEvidence = addEvidence({
         kind: "domain_edge", title: exercise.name, detail: `Targets ${exercise.muscle_groups.join(", ") || "unspecified muscles"}; loads ${exercise.joints_loaded.join(", ") || "no joint recorded"}; requires ${exercise.equipment_required.join(", ") || "no equipment"}.`, sourceLabel: "Supplied exercise dataset", jsonPointer: `/${index}`, graphPath: [`exercise:${exercise.id}`, "targets / stresses / requires"],
       });
-      const evidenceIds = [requestEvidence, equipmentEvidence, exerciseEvidence];
+      const exerciseNodeId = `exercise:${exercise.id}`;
+      const kneeStressPath = activeKnee ? this.graph.stressPathToAny(exerciseNodeId, kneeAnatomyIds) : undefined;
+      const recordedStressTargets = this.graph.edgesFrom(exerciseNodeId, "stresses").map((edge) => edge.target);
+      const kneeGraphEvidence = activeKnee ? addEvidence({
+        kind: kneeStressPath ? "domain_edge" : "derived",
+        title: kneeStressPath ? "Knee graph: loading relationship" : "Knee graph: no recorded loading relationship",
+        detail: kneeStressPath
+          ? `Graph traversal connects ${exercise.name}'s recorded joint loading to Jordan's active left-knee condition. The knee safety rule therefore down-ranks or excludes it unless it can be modified.`
+          : `Graph traversal found no recorded stresses path from ${exercise.name} to Jordan's affected knee anatomy. Recorded joint-loading targets: ${recordedStressTargets.length ? recordedStressTargets.map((nodeId) => this.graph.nodes.get(nodeId)?.label ?? nodeId).join(", ") : "none"}.`,
+        sourceLabel: "In-memory knowledge graph",
+        jsonPointer: kneeStressPath?.provenance?.jsonPointer,
+        graphPath: kneeStressPath && kneeConstraintPath
+          ? [...kneeConstraintPath.path, "matched_by", ...kneeStressPath.path]
+          : [...(kneeConstraintPath?.path ?? [memberId, "has_condition", "anatomy:knee"]), "no_matching_stresses_path", exerciseNodeId],
+        ruleId: "KNEE-GRAPH-01",
+      }) : undefined;
+      const evidenceIds = [requestEvidence, equipmentEvidence, exerciseEvidence, ...(kneeGraphEvidence ? [kneeGraphEvidence] : [])];
       const patterns = exercise.movement_patterns.join(" ").toLowerCase();
       let excludedReason: string | undefined;
 
       if (!equipmentAllowed(exercise, available, requested, intent.equipmentMode === "only")) excludedReason = "Required equipment is unavailable or outside the equipment-only constraint.";
-      else if ((intent.noImpact || activeKnee) && /cardio - plyometric/.test(patterns) && (exercise.joints_loaded.includes("knee") || /high-impact jumping/i.test(this.member.preferences.notes))) excludedReason = "Plyometrics are removed by the active knee rule and Jordan's recorded high-impact preference.";
+      else if ((intent.noImpact || activeKnee) && /cardio - plyometric/.test(patterns) && (Boolean(kneeStressPath) || /high-impact jumping/i.test(this.member.preferences.notes))) excludedReason = "Plyometrics are removed by the active knee rule and Jordan's recorded high-impact preference.";
       else if (activeKnee && deepLoadedKneeFlexion.has(exercise.name)) excludedReason = "Manually reviewed as deep loaded knee flexion and removed for the recovering knee.";
       else if (lumbarConcern && exercise.joints_loaded.includes("lumbar spine")) excludedReason = "Loads the unresolved symptomatic lumbar region and is conservatively removed.";
       else if (matchesExclusion(exercise, [...intent.excludedTerms, ...this.member.preferences.dislikes])) excludedReason = "Matched an explicit exclusion or Jordan's recorded dislikes.";
@@ -320,15 +345,17 @@ export class WorkoutService {
         return;
       }
 
-      const kneeLoading = activeKnee && exercise.joints_loaded.includes("knee");
+      const kneeLoading = Boolean(kneeStressPath);
       let score = 100 - exercise.priority_tier * 3;
       if (hasFocus(exercise, intent.focus)) score += 35;
       if (exercise.equipment_required.some((item) => requested.has(normalize(item)))) score += 12;
       if (phaseFor(exercise) !== "main") score += 5;
       if (kneeLoading) score -= 24;
       const reason = kneeLoading
-        ? "Included with a conservative range and loading penalty because it ordinarily loads the knee."
-        : "Matches the focus, safety, and available-equipment constraints.";
+        ? "The knowledge graph connects this exercise to Jordan's affected knee anatomy, so it is down-ranked and included only with a conservative range."
+        : activeKnee
+          ? "Matches the focus and available-equipment constraints; graph traversal found no recorded stresses path to Jordan's affected knee anatomy."
+          : "Matches the focus, safety, and available-equipment constraints.";
       const ids = kneeLoading ? [...evidenceIds, injuryEvidence, kneeRuleEvidence] : evidenceIds;
       candidates.push({ exercise, score, modified: kneeLoading, instructions: kneeLoading ? "Use a shallow, comfortable range; keep effort controlled and stop if knee symptoms increase." : "Move with control and keep two to three repetitions in reserve.", evidenceIds: ids });
       decisions.push({ exerciseId: exercise.id, exerciseName: exercise.name, decision: "included", score, reason, evidenceIds: ids });

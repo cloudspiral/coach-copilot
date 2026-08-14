@@ -57,14 +57,20 @@ describe("controlled semantic evaluation matrix", () => {
   for (const scenario of copilotScenarios) {
     it(`${scenario.id} ${scenario.message}`, async () => {
       const response = await request(app).post("/api/copilot/query").send({ memberId: member.profile.id, message: scenario.message }).expect(200);
-      expect(response.body.topic).toBe(scenario.expectedTopic);
+      if (scenario.expectedTopic) expect(response.body.topic).toBe(scenario.expectedTopic);
+      if (scenario.broadSelection) {
+        expect(response.body.topics).toContain(response.body.topic);
+        expect(response.body.topics.length).toBeGreaterThanOrEqual(2);
+        expect(response.body.topics.length).toBeLessThanOrEqual(4);
+      }
       expect(response.body.mode).toBe("live");
       expect(response.body.modelCallCount).toBe(2);
       const text = JSON.stringify(response.body.answer);
       for (const expected of scenario.contains) expect(text.toLowerCase()).toContain(expected.toLowerCase());
-      expect(response.body.answer.claims.every((claim: { evidenceIds: string[] }) => claim.evidenceIds.length > 0)).toBe(true);
+      if (scenario.containsAny) expect(scenario.containsAny.some((expected) => text.toLowerCase().includes(expected.toLowerCase()))).toBe(true);
+      expect(response.body.answer.narrative.every((item: { evidenceIds: string[] }) => item.evidenceIds.length > 0)).toBe(true);
       const evidenceIds = new Set(response.body.evidence.map((item: { id: string }) => item.id));
-      expect(response.body.answer.claims.every((claim: { evidenceIds: string[] }) => claim.evidenceIds.every((id) => evidenceIds.has(id)))).toBe(true);
+      expect(response.body.answer.narrative.every((item: { evidenceIds: string[] }) => item.evidenceIds.every((id) => evidenceIds.has(id)))).toBe(true);
       if (scenario.chartValues) expect(response.body.chart.data.map((point: Record<string, string | number>) => Object.values(point).at(-1))).toEqual(scenario.chartValues);
     });
   }

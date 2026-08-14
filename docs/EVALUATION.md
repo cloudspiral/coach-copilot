@@ -10,11 +10,13 @@ Provider storage: **disabled (`store: false`)**
 | Gate | Result |
 | --- | --- |
 | Unit/API integration | 10/10 passed |
-| Controlled semantic matrix | 46/46 tests passed |
+| Controlled semantic matrix | 47/47 tests passed |
 | Live unretried semantic matrix | 43/44 scenarios passed (97.7%) |
 | Natural-language live quality audit | 30/30 interactions passed (100%) |
 | Critical live failures | 0 |
 | Offline Playwright | Passed at 1440×900, 1024×768, and 390×844-class viewports |
+
+The current controlled matrix adds C25 for model-selected broad-topic retrieval. The historical live semantic and browser totals below predate that case and the cited-narrative response contract; they have not been regenerated.
 | Live Playwright | 14/14 final-tree flows passed across desktop, tablet, and phone |
 | Typecheck / lint / production build | Passed |
 | Manual visual inspection | Login, generated plan, citations, Copilot answer, and chart inspected; no browser warnings/errors |
@@ -23,7 +25,7 @@ The live test process forcibly enables `REQUIRE_LIVE_MODEL=true`. A missing key,
 
 ## Natural-language quality and fix cycle
 
-The final post-fix audit started a fresh in-memory server and ran all 30 interactions sequentially with no case retries. It checks the visible final answer, not only structured parsing: topic/focus relevance, concise claim count, required and forbidden content, numeric support in the cited evidence, citation-pointer relevance, chart points, equipment intersection, safety exclusions, duration/phase structure, and provider-call metadata.
+The final post-fix audit started a fresh in-memory server and ran all 30 interactions sequentially with no case retries. It checks the visible final answer, not only structured parsing: topic/focus relevance, concise narrative-item count, required and forbidden content, numeric support in the cited evidence, citation-pointer relevance, chart points, equipment intersection, safety exclusions, duration/phase structure, and provider-call metadata.
 
 | Metric | All | Workout | Copilot |
 | --- | ---: | ---: | ---: |
@@ -222,7 +224,7 @@ Playwright literally fills inputs and presses visible controls. Traces and scree
 
 ### Copilot flows
 
-1. Morning brief and claim citations.
+1. Morning brief and sentence citations.
 2. Adherence question and exact four-point chart.
 3. Sleep average.
 4. Churn followed by explanation.

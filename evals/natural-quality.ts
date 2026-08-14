@@ -44,7 +44,7 @@ interface CopilotStep {
   contains: string[];
   forbidden?: string[];
   citationPointers: string[];
-  maxClaims: number;
+  maxNarrativeItems: number;
   chartValues?: number[];
 }
 
@@ -162,7 +162,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "today",
     contains: ["June 3", "100%", "50%", "left knee"],
     citationPointers: ["/coach_brief/morning_tasks", "/adherence", "/injuries/0"],
-    maxClaims: 3,
+    maxNarrativeItems: 3,
   },
   {
     id: "NQ-C02",
@@ -172,7 +172,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "draft_message",
     contains: ["Nice work", "lower-body", "knee"],
     citationPointers: ["/coach_brief/morning_tasks/0"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
   },
   {
     id: "NQ-C03",
@@ -181,7 +181,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "adherence",
     contains: ["100%, 100%, 75%, and 50%", "50 percentage-point"],
     citationPointers: ["/adherence/weekly_completion_pct"],
-    maxClaims: 2,
+    maxNarrativeItems: 2,
     chartValues: [100, 100, 75, 50],
   },
   {
@@ -193,7 +193,7 @@ const copilotSteps: CopilotStep[] = [
     contains: ["work demands", "fatigue", "raw login events", "independently"],
     forbidden: ["caused her adherence", "proves"],
     citationPointers: ["/chat_history/2", "/coach_brief/churn_risk/reasons"],
-    maxClaims: 2,
+    maxNarrativeItems: 2,
   },
   {
     id: "NQ-C05",
@@ -202,7 +202,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "sleep",
     contains: ["6.3 hours", "43.9", "Two"],
     citationPointers: ["/biomarkers/sleep_hours_last_7_days"],
-    maxClaims: 2,
+    maxNarrativeItems: 2,
     chartValues: [6.1, 5.4, 7.2, 6, 5.1, 7.8, 6.3],
   },
   {
@@ -213,7 +213,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "sleep",
     contains: ["Two", "seven"],
     citationPointers: ["/biomarkers/sleep_hours_last_7_days"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
     chartValues: [6.1, 5.4, 7.2, 6, 5.1, 7.8, 6.3],
   },
   {
@@ -223,7 +223,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "weight",
     contains: ["72.4 kg", "71.2 kg", "1.2 kg"],
     citationPointers: ["/biomarkers/weight_trend_kg"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
     chartValues: [72.4, 71.9, 71.2],
   },
   {
@@ -233,7 +233,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "workout",
     contains: ["June 3", "28 minutes", "RPE 6"],
     citationPointers: ["/workout_history/0"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
   },
   {
     id: "NQ-C09",
@@ -244,7 +244,7 @@ const copilotSteps: CopilotStep[] = [
     contains: ["felt okay", "box squats", "no later"],
     forbidden: ["fully recovered", "pain-free afterward"],
     citationPointers: ["/chat_history/0"],
-    maxClaims: 2,
+    maxNarrativeItems: 2,
   },
   {
     id: "NQ-C10",
@@ -253,7 +253,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "injuries",
     contains: ["deep knee flexion", "plyometrics", "low-impact"],
     citationPointers: ["/injuries/0"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
   },
   {
     id: "NQ-C11",
@@ -262,7 +262,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "equipment",
     contains: ["dumbbells", "kettlebell", "flat bench", "no barbell"],
     citationPointers: ["/equipment_available"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
   },
   {
     id: "NQ-C12",
@@ -271,7 +271,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "labs",
     contains: ["LDL 118", "HbA1c 5.3%", "vitamin D 28"],
     citationPointers: ["/labs/blood_panel"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
   },
   {
     id: "NQ-C13",
@@ -282,7 +282,7 @@ const copilotSteps: CopilotStep[] = [
     contains: ["No reference ranges", "cannot establish"],
     forbidden: ["clinically deficient", "is abnormal"],
     citationPointers: ["/labs/blood_panel"],
-    maxClaims: 2,
+    maxNarrativeItems: 2,
   },
   {
     id: "NQ-C14",
@@ -291,7 +291,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "unavailable",
     contains: ["not available"],
     citationPointers: ["/"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
   },
   {
     id: "NQ-C15",
@@ -301,7 +301,7 @@ const copilotSteps: CopilotStep[] = [
     contains: ["elevated", "100%", "50%", "cannot be independently verified"],
     forbidden: ["will churn", "definitely"],
     citationPointers: ["/coach_brief/churn_risk"],
-    maxClaims: 2,
+    maxNarrativeItems: 2,
   },
   {
     id: "NQ-C16",
@@ -311,7 +311,7 @@ const copilotSteps: CopilotStep[] = [
     contains: ["work demands", "fatigue", "her report"],
     forbidden: ["sole cause was"],
     citationPointers: ["/chat_history/2"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
   },
   {
     id: "NQ-C17",
@@ -320,7 +320,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "attachments",
     contains: ["one synthetic", "no viewable image file"],
     citationPointers: ["/chat_history/3/attachments/0"],
-    maxClaims: 1,
+    maxNarrativeItems: 1,
   },
   {
     id: "NQ-C18",
@@ -329,7 +329,7 @@ const copilotSteps: CopilotStep[] = [
     expectedTopic: "goals",
     contains: ["lower-body strength", "pain-free squatting", "7+ hours"],
     citationPointers: ["/goals"],
-    maxClaims: 2,
+    maxNarrativeItems: 2,
   },
 ];
 
@@ -440,23 +440,23 @@ function verifyCopilot(step: CopilotStep, response: Response, payload: Record<st
   modelMetadata(payload, failures, 2);
   check(payload.topic === step.expectedTopic, `expected topic ${step.expectedTopic}; received ${payload.topic}`, failures);
   const answerText = normalized(payload.answer);
-  const answerProse = [payload.answer?.headline, ...(payload.answer?.claims ?? []).map((claim: any) => claim.text), payload.answer?.followUpSuggestion].join(" ");
+  const answerProse = [payload.answer?.headline, ...(payload.answer?.narrative ?? []).map((item: any) => item.text), payload.answer?.followUpSuggestion].join(" ");
   for (const expected of step.contains) check(answerText.includes(expected.toLowerCase()), `answer missing: ${expected}`, failures);
   for (const forbidden of step.forbidden ?? []) check(!answerText.includes(forbidden.toLowerCase()), `answer included unsupported/irrelevant phrase: ${forbidden}`, failures);
   check(answerText.length < 2_000, `answer is excessively long (${answerText.length} characters)`, failures);
   check(!/\bev-c-\d+\b/i.test(answerProse), "raw evidence IDs leaked into answer prose", failures);
 
-  const claims = payload.answer?.claims ?? [];
+  const narrative = payload.answer?.narrative ?? [];
   const evidenceById = new Map((payload.evidence ?? []).map((record: any) => [record.id, record]));
-  check(claims.length > 0, "answer has no material claims", failures);
-  check(claims.length <= step.maxClaims, `answer has ${claims.length} claims; expected at most ${step.maxClaims}`, failures);
-  for (const claim of claims) {
-    check((claim.evidenceIds ?? []).length > 0, "claim has no citation", failures);
-    const cited = (claim.evidenceIds ?? []).map((id: string) => evidenceById.get(id));
-    check(cited.every(Boolean), "claim cites an unknown evidence ID", failures);
-    check(cited.some((record: any) => step.citationPointers.includes(record?.jsonPointer)), `claim cites an irrelevant source for topic ${step.expectedTopic}`, failures);
+  check(narrative.length > 0, "answer has no narrative", failures);
+  check(narrative.length <= step.maxNarrativeItems, `answer has ${narrative.length} narrative items; expected at most ${step.maxNarrativeItems}`, failures);
+  for (const item of narrative) {
+    check((item.evidenceIds ?? []).length > 0, "narrative item has no citation", failures);
+    const cited = (item.evidenceIds ?? []).map((id: string) => evidenceById.get(id));
+    check(cited.every(Boolean), "narrative item cites an unknown evidence ID", failures);
+    check(cited.some((record: any) => step.citationPointers.includes(record?.jsonPointer)), `narrative item cites an irrelevant source for topic ${step.expectedTopic}`, failures);
     const citedDetail = cited.map((record: any) => record?.detail ?? "").join(" ");
-    for (const token of numericTokens(claim.text)) check(citedDetail.includes(token), `numeric token ${token} is not present in cited evidence`, failures);
+    for (const token of numericTokens(item.text)) check(citedDetail.includes(token), `numeric token ${token} is not present in cited evidence`, failures);
   }
 
   const actualChartValues = payload.chart?.data?.map((point: Record<string, string | number>) => Object.values(point).at(-1));

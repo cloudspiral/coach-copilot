@@ -83,11 +83,24 @@ export function makeControlledGateway() {
       };
     }
     if (stage === "copilot_intent") {
-      const topic = copilotTopic(String(parsed.message), lastCopilotTopic);
+      const message = String(parsed.message);
+      const broadQuestion = /\boverall\b|how(?:'s| is) (?:she|he|jordan|the member) doing|big picture|general picture/i.test(message);
+      const topic: CopilotTopic = broadQuestion ? "workout" : copilotTopic(message, lastCopilotTopic);
+      const relatedTopics: CopilotTopic[] = broadQuestion ? ["adherence", "injuries"] : [];
       lastCopilotTopic = topic;
-      return { topic, timeHorizon: null, requestedChart: /plot|trend|compare/i.test(String(parsed.message)), entities: [], unresolvedTerms: [] };
+      return { topic, relatedTopics, timeHorizon: null, requestedChart: /plot|trend|compare/i.test(message), entities: [], unresolvedTerms: [] };
     }
-    if (stage === "copilot_answer") return parsed.deterministicDraft;
+    if (stage === "copilot_answer") {
+      const candidate = parsed.candidateAnswer as { headline: string; narrative: Array<{ text: string; evidenceIds: string[] }>; followUpSuggestion: string };
+      if (/\boverall\b|big picture|general picture/i.test(String(parsed.question))) {
+        return {
+          headline: "Overall, Jordan is making progress with one clear concern",
+          narrative: [candidate.narrative[0], candidate.narrative[1], candidate.narrative.at(-1)],
+          followUpSuggestion: "Ask about any area you want to explore further.",
+        };
+      }
+      return candidate;
+    }
     throw new Error(`Unexpected controlled stage: ${stage}`);
   });
 }

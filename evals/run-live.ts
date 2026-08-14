@@ -43,10 +43,13 @@ try {
     try {
       const { response, payload, latencyMs } = await send("/api/copilot/query", { memberId: member.profile.id, message: scenario.message });
       const text = JSON.stringify(payload.answer ?? {}).toLowerCase();
-      let passed = response.ok && payload.mode === "live" && payload.modelCallCount === 2 && payload.topic === scenario.expectedTopic;
+      let passed = response.ok && payload.mode === "live" && payload.modelCallCount === 2;
+      if (scenario.expectedTopic) passed = passed && payload.topic === scenario.expectedTopic;
+      if (scenario.broadSelection) passed = passed && payload.topics?.includes(payload.topic) && payload.topics.length >= 2 && payload.topics.length <= 4;
       for (const expected of scenario.contains) passed = passed && text.includes(expected.toLowerCase());
-      passed = passed && payload.answer?.claims?.every((claim: any) => claim.evidenceIds?.length > 0);
-      results.push({ id: scenario.id, workflow: "copilot", passed, latencyMs, modelCallCount: payload.modelCallCount, responseIds: payload.modelCalls?.map((call: any) => call.responseId), tokenUsage: payload.modelCalls?.map((call: any) => call.tokenUsage), error: passed ? undefined : payload.error ?? `topic=${payload.topic}`, representative: ["C01", "C04", "C06", "C13", "C23", "C24"].includes(scenario.id) ? payload : undefined });
+      if (scenario.containsAny) passed = passed && scenario.containsAny.some((expected) => text.includes(expected.toLowerCase()));
+      passed = passed && payload.answer?.narrative?.every((item: any) => item.evidenceIds?.length > 0);
+      results.push({ id: scenario.id, workflow: "copilot", passed, latencyMs, modelCallCount: payload.modelCallCount, responseIds: payload.modelCalls?.map((call: any) => call.responseId), tokenUsage: payload.modelCalls?.map((call: any) => call.tokenUsage), error: passed ? undefined : payload.error ?? `topic=${payload.topic}`, representative: ["C01", "C04", "C06", "C13", "C23", "C24", "C25"].includes(scenario.id) ? payload : undefined });
     } catch (error) {
       results.push({ id: scenario.id, workflow: "copilot", passed: false, latencyMs: 0, error: error instanceof Error ? error.message : String(error) });
     }

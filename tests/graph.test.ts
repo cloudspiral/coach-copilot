@@ -24,4 +24,27 @@ describe("knowledge graph and concept resolution", () => {
     expect(graph.edgesFrom(`member:${member.profile.id}`, "has_condition")).toHaveLength(1);
     expect(graph.edges.size).toBeGreaterThan(150);
   });
+
+  it("joins Jordan's active knee condition to exercises through anatomy traversal", () => {
+    const affected = graph.affectedAnatomyPaths(`member:${member.profile.id}`);
+    expect(affected.get("anatomy:knee")?.path).toEqual([
+      `member:${member.profile.id}`,
+      "has_condition",
+      "condition:inj_knee_left",
+      "affects",
+      "anatomy:patellofemoral-area",
+      "part_of",
+      "anatomy:knee",
+    ]);
+
+    const kneeScope = new Set(affected.keys());
+    const kneeLoadingExercise = exercises.find((exercise) => exercise.name === "Dumbbell Goblet Split Squat")!;
+    const kneeSparingExercise = exercises.find((exercise) => exercise.name === "Walking Toe Touches")!;
+    expect(graph.stressPathToAny(`exercise:${kneeLoadingExercise.id}`, kneeScope)?.path).toEqual([
+      `exercise:${kneeLoadingExercise.id}`,
+      "stresses",
+      "anatomy:knee",
+    ]);
+    expect(graph.stressPathToAny(`exercise:${kneeSparingExercise.id}`, kneeScope)).toBeUndefined();
+  });
 });

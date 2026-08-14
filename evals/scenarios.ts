@@ -10,8 +10,10 @@ export interface WorkoutScenario {
 export interface CopilotScenario {
   id: string;
   message: string;
-  expectedTopic: string;
+  expectedTopic?: string;
+  broadSelection?: boolean;
   contains: string[];
+  containsAny?: string[];
   chartValues?: number[];
 }
 
@@ -63,4 +65,5 @@ export const copilotScenarios: CopilotScenario[] = [
   { id: "C22", message: "Show me her past images.", expectedTopic: "attachments", contains: ["one synthetic home-setup image"] },
   { id: "C23", message: "What is her blood pressure?", expectedTopic: "unavailable", contains: ["not available"] },
   { id: "C24", message: "Is her vitamin D clinically deficient?", expectedTopic: "labs_reference", contains: ["28 ng/mL", "cannot establish"] },
+  { id: "C25", message: "How's he doing overall?", broadSelection: true, contains: [], containsAny: ["June 3", "100%", "6.3 hours", "left knee", "elevated"] },
 ];

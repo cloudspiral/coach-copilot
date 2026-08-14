@@ -77,6 +77,7 @@ export const CopilotRequestSchema = z.object({
 
 export const CopilotIntentSchema = z.object({
   topic: z.enum(copilotTopics),
+  relatedTopics: z.array(z.enum(copilotTopics)).max(3),
   timeHorizon: z.string().nullable(),
   requestedChart: z.boolean(),
   entities: z.array(z.string()),
@@ -85,7 +86,7 @@ export const CopilotIntentSchema = z.object({
 
 export const CopilotAnswerSchema = z.object({
   headline: z.string(),
-  claims: z.array(
+  narrative: z.array(
     z.object({
       text: z.string(),
       evidenceIds: z.array(z.string()),

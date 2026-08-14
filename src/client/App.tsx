@@ -32,7 +32,8 @@ interface CopilotPayload {
   traceId: string;
   conversationId: string;
   topic: string;
-  answer: { headline: string; claims: Array<{ text: string; evidenceIds: string[] }>; followUpSuggestion: string };
+  topics: string[];
+  answer: { headline: string; narrative: Array<{ text: string; evidenceIds: string[] }>; followUpSuggestion: string };
   chart: ChartSpec | null;
   attachments: Array<{ type: string; caption: string }>;
   evidence: EvidenceRecord[];
@@ -56,10 +57,13 @@ function ModeBadge({ mode, model, count }: { mode: "live" | "deterministic_fallb
 }
 
 function EvidenceDetails({ ids, evidence }: { ids: string[]; evidence: EvidenceRecord[] }) {
-  const items = ids.map((id) => evidence.find((item) => item.id === id)).filter(Boolean) as EvidenceRecord[];
+  const items = ids.flatMap((id) => {
+    const evidenceIndex = evidence.findIndex((item) => item.id === id);
+    return evidenceIndex === -1 ? [] : [{ item: evidence[evidenceIndex], citationNumber: evidenceIndex + 1 }];
+  });
   return <div className="citation-row">
-    {items.map((item, index) => <details className="citation" key={item.id} data-testid="citation">
-      <summary aria-label={`Open evidence ${item.id}`}>[{index + 1}]</summary>
+    {items.map(({ item, citationNumber }) => <details className="citation" key={item.id} data-testid="citation">
+      <summary aria-label={`Open citation ${citationNumber}: ${item.title}`}>[{citationNumber}]</summary>
       <div className="evidence-popover">
         <strong>{item.title}</strong>
         <p>{item.detail}</p>
@@ -203,11 +207,11 @@ function CopilotSurface() {
           {history.length === 0 && <div className="copilot-welcome"><div className="orb">C</div><h3>What do you need to know?</h3><p>I retrieve Jordan's evidence first, compute results in code, and cite each answer.</p></div>}
           {history.map((entry, index) => entry.role === "coach" ? <div className="message coach-message" key={index}><span>You</span><p>{entry.message}</p></div> : entry.response && <div className="message copilot-message" key={index} data-testid="copilot-answer">
             <div className="answer-header"><div className="mini-orb">C</div><div><span>Coach Copilot</span><h3>{entry.response.answer.headline}</h3></div></div>
-            <div className="claims">{entry.response.answer.claims.map((claim, claimIndex) => <div className="claim" key={claimIndex}><p>{claim.text}</p><EvidenceDetails ids={claim.evidenceIds} evidence={entry.response!.evidence} /></div>)}</div>
+            <div className="answer-narrative">{entry.response.answer.narrative.map((item, itemIndex) => <div className="narrative-line" key={itemIndex}><p>{item.text}</p><EvidenceDetails ids={item.evidenceIds} evidence={entry.response!.evidence} /></div>)}</div>
             {entry.response.chart && <ChartView chart={entry.response.chart} />}
             {entry.response.attachments.map((attachment, attachmentIndex) => <div className="attachment" key={attachmentIndex}><div>▧</div><span><strong>{attachment.caption}</strong><small>Synthetic placeholder · no image file supplied</small></span></div>)}
             <button className="followup" onClick={() => setInput(entry.response!.answer.followUpSuggestion)} type="button">↳ {entry.response.answer.followUpSuggestion}</button>
-            <div className="trace-line">Topic {entry.response.topic} · Trace {entry.response.traceId.slice(0, 8)} · <span data-testid="model-call-count">modelCallCount={entry.response.modelCallCount}</span></div>
+            <div className="trace-line">{entry.response.topics.length > 1 ? "Topics" : "Topic"} {entry.response.topics.join(", ")} · Trace {entry.response.traceId.slice(0, 8)} · <span data-testid="model-call-count">modelCallCount={entry.response.modelCallCount}</span></div>
           </div>)}
           {loading && <div className="message copilot-message loading-message"><span className="spinner" />Retrieving evidence and composing…</div>}
           {error && <div className="alert error" role="alert">{error}</div>}

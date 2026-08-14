@@ -10,6 +10,12 @@ export function slug(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
+export interface TraversalPath {
+  nodeId: string;
+  path: string[];
+  provenance?: Provenance;
+}
+
 export class KnowledgeGraph {
   readonly nodes = new Map<string, GraphNode>();
   readonly edges = new Map<string, GraphEdge>();
@@ -49,6 +55,71 @@ export class KnowledgeGraph {
 
   edgesFrom(source: string, type?: EdgeType): GraphEdge[] {
     return (this.outgoing.get(source) ?? []).filter((edge) => !type || edge.type === type);
+  }
+
+  affectedAnatomyPaths(memberId: string): Map<string, TraversalPath> {
+    const paths = new Map<string, TraversalPath>();
+    const inactiveStatuses = new Set(["cleared", "recovered", "resolved"]);
+
+    for (const conditionEdge of this.edgesFrom(memberId, "has_condition")) {
+      const condition = this.nodes.get(conditionEdge.target);
+      const status = String(condition?.properties.status ?? "").toLowerCase();
+      if (!condition || inactiveStatuses.has(status)) continue;
+
+      for (const affectsEdge of this.edgesFrom(condition.id, "affects")) {
+        const queue: TraversalPath[] = [{
+          nodeId: affectsEdge.target,
+          path: [memberId, "has_condition", condition.id, "affects", affectsEdge.target],
+          provenance: affectsEdge.provenance,
+        }];
+        const visited = new Set<string>();
+
+        while (queue.length) {
+          const current = queue.shift()!;
+          if (visited.has(current.nodeId)) continue;
+          visited.add(current.nodeId);
+          if (!paths.has(current.nodeId)) paths.set(current.nodeId, current);
+
+          for (const edge of this.edgesFrom(current.nodeId, "part_of")) {
+            queue.push({
+              nodeId: edge.target,
+              path: [...current.path, "part_of", edge.target],
+              provenance: current.provenance ?? edge.provenance,
+            });
+          }
+        }
+      }
+    }
+
+    return paths;
+  }
+
+  stressPathToAny(exerciseId: string, anatomyIds: Set<string>): TraversalPath | undefined {
+    for (const stressEdge of this.edgesFrom(exerciseId, "stresses")) {
+      const queue: TraversalPath[] = [{
+        nodeId: stressEdge.target,
+        path: [exerciseId, "stresses", stressEdge.target],
+        provenance: stressEdge.provenance,
+      }];
+      const visited = new Set<string>();
+
+      while (queue.length) {
+        const current = queue.shift()!;
+        if (visited.has(current.nodeId)) continue;
+        visited.add(current.nodeId);
+        if (anatomyIds.has(current.nodeId)) return current;
+
+        for (const edge of this.edgesFrom(current.nodeId, "part_of")) {
+          queue.push({
+            nodeId: edge.target,
+            path: [...current.path, "part_of", edge.target],
+            provenance: current.provenance ?? edge.provenance,
+          });
+        }
+      }
+    }
+
+    return undefined;
   }
 
   ancestors(nodeId: string): Set<string> {

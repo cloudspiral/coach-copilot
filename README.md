@@ -23,7 +23,7 @@ Open <http://127.0.0.1:5173>, click **Continue as Sam**, and choose either produ
 ## Product surfaces
 
 - **Workout Generator:** prompt and duration controls, graph-recomputed adjustments, warmup/main/cooldown phases, equipment and injury constraints, safety notes, exclusions, and expandable provenance.
-- **Coach AI Copilot:** quick prompts, free-form questions, eight-turn in-memory context, grounded claims, deterministic charts, attachment placeholders, unavailable-data handling, and expandable citations.
+- **Coach AI Copilot:** quick prompts, free-form questions, model-selected graph topics for broad requests, eight-turn in-memory context and targeted follow-ups, grounded conversational narratives, deterministic charts, attachment placeholders, unavailable-data handling, and expandable sentence citations.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ sequenceDiagram
   A->>G: Resolve, retrieve, filter, compute, assemble
   G-->>A: Approved result + evidence
   A->>M: 2. Phrase constrained output
-  M-->>A: Structured narrative/claims
+  M-->>A: Structured cited narrative
   A->>A: Validate IDs, citations, numbers, safety
   A-->>U: Final response + two call traces
 ```
@@ -112,7 +112,7 @@ For Jordan's mild recovering knee condition, deterministic code:
 
 Unknown anatomy returns `needs_clarification` and no plan. An adjustment references `basePlanId` and recomputes selection from the graph. Model-written workout notes are rejected if they mention unknown exercises/evidence or contradict safety.
 
-Copilot retrieval and calculations are deterministic. Each claim must cite retrieved evidence; cited IDs must exist; numeric tokens must appear in cited raw/derived evidence; chart points never come from the model. Blood pressure is reported unavailable. Vitamin D is reported as `28 ng/mL` on the supplied date without diagnosing deficiency because the source contains no reference range.
+Copilot retrieval and calculations are deterministic. Each narrative item must cite retrieved evidence; cited IDs must exist; numeric tokens must appear in cited raw/derived evidence; chart points never come from the model. Citations are numbered once against the answer's evidence packet and remain stable across the response. Blood pressure is reported unavailable. Vitamin D is reported as `28 ng/mL` on the supplied date without diagnosing deficiency because the source contains no reference range.
 
 This is coaching support over synthetic data, not medical advice. The graph cannot infer conditions, clinical causality, reference ranges, or clearance beyond what the supplied record states.
 

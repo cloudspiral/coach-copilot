@@ -39,9 +39,13 @@ test.describe("offline browser workflows", () => {
     await expect(page.locator(".exercise-main h5").filter({ hasText: "Static Jump" })).toHaveCount(0);
     await page.getByText("Why this exercise?").first().click();
     const why = page.locator(".why").first();
-    await why.getByTestId("citation").nth(1).locator("summary").click();
-    await expect(why.getByText("JSON pointer").first()).toBeVisible();
-    await expect(why.getByText("Graph path").first()).toBeVisible();
+    const kneeGraphCitation = why.locator('summary[aria-label*="Knee graph:"]');
+    await expect(kneeGraphCitation).toBeVisible();
+    await kneeGraphCitation.click();
+    const kneeGraphDetails = kneeGraphCitation.locator("..");
+    await expect(kneeGraphDetails.getByText("In-memory knowledge graph")).toBeVisible();
+    await expect(kneeGraphDetails.getByText("KNEE-GRAPH-01")).toBeVisible();
+    await expect(kneeGraphDetails.getByText("Graph path", { exact: true })).toBeVisible();
     await expect(page.getByText("Excluded by constraints")).toBeVisible();
     await expect(page.locator(".excluded-row").filter({ hasText: "Static Jump" })).toContainText("Plyometrics are removed by the active knee rule");
     await page.locator("#adjustment").fill("Exclude deadlifts and replace anything similar.");
@@ -63,10 +67,15 @@ test.describe("offline browser workflows", () => {
     expectNoConsoleErrors(errors);
   });
 
-  test("types Copilot queries, follows context, checks charts, claims, and safe unavailable answers", async ({ page }) => {
+  test("types Copilot queries, renders conversational citations, follows context, and handles unavailable answers", async ({ page }) => {
     const errors = await openApp(page, "copilot");
     await ask(page, "Show me the brief.");
-    await expect(page.getByText("Jordan's coaching brief")).toBeVisible();
+    const briefAnswer = page.getByTestId("copilot-answer").last();
+    await expect(briefAnswer.getByRole("heading", { name: /Jordan.s coaching brief/i })).toBeVisible();
+    await expect(briefAnswer.locator(".narrative-line")).toHaveCount(3);
+    await expect(briefAnswer.locator('summary[aria-label^="Open citation 1:"]')).toBeVisible();
+    await expect(briefAnswer.locator('summary[aria-label^="Open citation 2:"]')).toBeVisible();
+    await expect(briefAnswer.locator('summary[aria-label^="Open citation 3:"]')).toBeVisible();
     await page.getByTestId("citation").first().locator("summary").click();
     await expect(page.getByText("Synthetic member context").first()).toBeVisible();
     await ask(page, "Plot adherence trend.");
@@ -82,7 +91,7 @@ test.describe("offline browser workflows", () => {
     await ask(page, "What is her blood pressure?");
     await expect(page.getByTestId("chat-history")).toContainText("not available");
     await ask(page, "Is her vitamin D clinically deficient?");
-    await expect(page.getByTestId("chat-history")).toContainText("cannot establish");
+    await expect(page.getByTestId("copilot-answer").last()).toContainText(/cannot (?:establish|be determined)|status is unavailable/i);
     expectNoConsoleErrors(errors);
   });
 
@@ -153,11 +162,30 @@ test.describe("live browser workflows", () => {
     expectNoConsoleErrors(errors);
   });
 
-  test("@live Copilot morning brief has claim citations", async ({ page }) => {
+  test("@live Copilot morning brief has sentence citations", async ({ page }) => {
     const errors = await openApp(page, "copilot");
     await ask(page, "Show me the brief.");
     await expect(page.getByTestId("model-call-count")).toContainText("modelCallCount=2");
     await expect(page.getByTestId("citation").first()).toBeVisible();
+    expectNoConsoleErrors(errors);
+  });
+
+  test("@live Copilot selects graph topics for a broad question and retrieves a specific follow-up", async ({ page }) => {
+    const errors = await openApp(page, "copilot");
+    await ask(page, "How's he doing overall?");
+    const summary = page.getByTestId("copilot-answer").last();
+    await expect(summary.locator(".narrative-line").first()).toBeVisible();
+    const summaryLineCount = await summary.locator(".narrative-line").count();
+    expect(summaryLineCount).toBeGreaterThanOrEqual(2);
+    expect(summaryLineCount).toBeLessThanOrEqual(4);
+    const citationLabels = await summary.locator(".citation summary").allTextContents();
+    expect(citationLabels).toEqual(citationLabels.map((_, index) => `[${index + 1}]`));
+    await expect(summary.locator(".trace-line")).toContainText("Topics");
+
+    await ask(page, "Now give me her latest labs specifically.");
+    const followUp = page.getByTestId("copilot-answer").last();
+    await expect(followUp).toContainText("LDL 118");
+    await expect(followUp.locator(".trace-line")).toContainText("Topic labs");
     expectNoConsoleErrors(errors);
   });
 
