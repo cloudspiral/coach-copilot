@@ -5,8 +5,9 @@ import { createProductionRuntime } from "./runtime.js";
 const config = loadConfig();
 const runtime = await createProductionRuntime(config);
 const { app } = createApp(config, runtime);
-const server = app.listen(config.port, "127.0.0.1", () => {
-  console.log(`Coach Copilot API listening on http://127.0.0.1:${config.port} (${config.model}; key ${config.apiKey ? "configured" : "missing"})`);
+const host = process.env.HOST ?? "0.0.0.0";
+const server = app.listen(config.port, host, () => {
+  console.log(`Coach Copilot API listening on http://${host}:${config.port} (${config.model}; key ${config.apiKey ? "configured" : "missing"})`);
 });
 
 async function shutdown(): Promise<void> {

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "concurrently -k -n api,web -c cyan,magenta \"tsx watch src/server/index.ts\" \"vite --host 127.0.0.1\"",
     "dev:test": "concurrently -k -n api,web -c cyan,magenta \"tsx src/server/test-index.ts\" \"vite --host 127.0.0.1\"",

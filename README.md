@@ -30,6 +30,12 @@ Health endpoints:
 - `GET /api/health` preserves the lightweight key/model/graph contract.
 - `GET /api/ready` verifies PostgreSQL, migrations, seed/catalog data, the active graph version, and LangGraph checkpoint readiness; it returns `503` if production dependencies are incomplete.
 
+## Railway deployment
+
+Production is deployed from the GitHub `main` branch to Railway. The web service builds the Vite client and Express server, runs `npm run db:setup` as its pre-deploy command, and starts only after Drizzle migrations, idempotent seed ingestion, and LangGraph checkpoint setup succeed. Railway PostgreSQL supplies `DATABASE_URL`; `/api/ready` is the deployment health check. The server listens on Railway's injected `PORT` and all interfaces while API keys remain server-only environment variables.
+
+The committed `railway.json` is the deployment contract. Railway source deployments should use the `coach-copilot` service and a separate PostgreSQL service in the same production environment.
+
 ## Product surfaces
 
 - **Workout Generator:** graph-recomputed plans and adjustments, warmup/main/cooldown phases, equipment and injury constraints, safety notes, exclusions, and expandable provenance.
@@ -113,4 +119,4 @@ Before this persistence refactor, the controlled suite contained 12 unit/API tes
 - [Synthetic member seed](data/member-context.json)
 - [Implementation plan](plan.md)
 
-Neo4j, LangChain agents, LangSmith tracing, authentication, cloud deployment, real member ingestion, vector search, and object storage are intentionally deferred. PostgreSQL remains the canonical application and graph store.
+Neo4j, LangChain agents, LangSmith tracing, authentication, real member ingestion, vector search, and object storage are intentionally deferred. Railway hosts the demo application and PostgreSQL, while PostgreSQL remains the canonical application and graph store.

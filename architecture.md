@@ -31,6 +31,8 @@ The runtime has five layers:
 
 Production startup is intentionally strict. It requires `DATABASE_URL`, the Drizzle migration table, typed seed records, one active non-empty graph version, and initialized LangGraph checkpoint tables. Missing state prevents the server from listening; JSON is never used as a fallback.
 
+The deployed demo runs as two Railway services in one production environment: the GitHub-backed `coach-copilot` web service and Railway PostgreSQL. Railway runs the application database setup as a pre-deploy command, then gates rollout health on `/api/ready`. The web process serves both the compiled React client and same-origin Express API, binds to Railway's injected `PORT` on all interfaces, and does not expose PostgreSQL publicly to the browser.
+
 ## PostgreSQL ownership
 
 The `public` schema is the canonical domain store.
