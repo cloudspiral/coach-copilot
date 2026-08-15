@@ -88,7 +88,7 @@ function fallbackIntent(request: WorkoutRequest, previous?: WorkoutIntent): Work
     if ((new RegExp(`(?:exclude|avoid|no|without)[^.!]{0,24}${term.replace(" ", "[ -]")}`, "i")).test(request.prompt)) excludedTerms.push(term);
   }
   if (/no barbell/.test(prompt)) excludedTerms.push("barbell");
-  const namedExclude = request.prompt.match(/exclude\s+([^,.]+)/i)?.[1];
+  const namedExclude = request.prompt.match(/\b(?:exclude|take out|leave out|remove|drop|skip)\s+(?:all\s+)?(.+?)(?=\s+(?:and|but)\s+|[,.!?]|$)/i)?.[1];
   if (namedExclude) excludedTerms.push(namedExclude.trim());
 
   const safetyTerms = [...(previous?.safetyTerms ?? [])];

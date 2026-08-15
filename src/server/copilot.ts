@@ -72,7 +72,7 @@ function routeTopic(message: string, prior?: CopilotTopic): CopilotIntent {
   else if (/weight/.test(text)) topic = "weight";
   else if (/blood[- ]pressure/.test(text)) topic = "unavailable";
   else if (/resting heart|heart rate|hrv|biomarker/.test(text)) topic = "biomarkers";
-  else if (/vitamin d|hba1c|a1c|blood panel|latest labs|labs?/.test(text)) topic = /deficient|outside|reference/.test(text) ? "labs_reference" : "labs";
+  else if (/vitamin d|hba1c|a1c|blood panel|bloodwork|latest labs|labs?/.test(text)) topic = /deficient|outside|reference/.test(text) ? "labs_reference" : "labs";
   else if (/dexa|body composition|body fat|lean mass|bone density/.test(text)) topic = "dexa";
   else if (/what changed|since last week/.test(text)) topic = "changes";
   else if (/churn|risk of churn/.test(text)) topic = "churn";

@@ -1,6 +1,25 @@
 # Coach Copilot Evaluation
 
-## Final result
+## Current post-persistence result
+
+Evaluation date: **2026-08-14**
+Model mode: **controlled structured gateway; no external provider request**
+
+| Gate | Result |
+| --- | --- |
+| Natural conversation quality | 32/32 interactions passed |
+| Unit/API | 20/20 passed |
+| Controlled semantic matrix | 47/47 passed |
+| PostgreSQL integration | 4/4 passed |
+| Offline Playwright | 6/6 passed across desktop, tablet, and phone-sized viewports |
+| Typecheck / lint / production build | Passed |
+| Current live provider/browser rerun | Not run; requires separate authorization to send the synthetic health/workout record externally |
+
+The 32-case audit runs sequentially through the real Express API, PostgreSQL repositories, active graph provider, and LangGraph workflows with a controlled structured-model gateway. It covers 14 Workout Generator turns, 18 Coach Copilot turns, and nine follow-up turns that depend on a saved plan or persisted conversation. All selected exercises had valid evidence references, and all 26 Copilot narrative sentences had citations.
+
+The first unretried pass was 28/32. It exposed two root causes: natural “take out …” workout adjustments were not deterministically preserved, and “bloodwork” was not recognized as a lab synonym, breaking both the initial question and its abnormality follow-up. After fixing the parsers and adding API regressions, the full unretried rerun passed 32/32. The ignored result bundle is `artifacts/natural-quality-controlled.json`.
+
+## Historical live-model result
 
 Evaluation date: **2026-08-13**
 Model: **gpt-5.6-luna**
@@ -23,9 +42,9 @@ The current controlled matrix adds C25 for model-selected broad-topic retrieval.
 
 The live test process forcibly enables `REQUIRE_LIVE_MODEL=true`. A missing key, fallback response, refusal, timeout, structured-output failure, or incorrect successful-workflow call count fails the scenario.
 
-## Natural-language quality and fix cycle
+## Historical live natural-language quality and fix cycle
 
-The final post-fix audit started a fresh in-memory server and ran all 30 interactions sequentially with no case retries. It checks the visible final answer, not only structured parsing: topic/focus relevance, concise narrative-item count, required and forbidden content, numeric support in the cited evidence, citation-pointer relevance, chart points, equipment intersection, safety exclusions, duration/phase structure, and provider-call metadata.
+This 2026-08-13 post-fix audit started a fresh in-memory server and ran all 30 historical live interactions sequentially with no case retries. It checked the visible final answer, not only structured parsing: topic/focus relevance, concise narrative-item count, required and forbidden content, numeric support in the cited evidence, citation-pointer relevance, chart points, equipment intersection, safety exclusions, duration/phase structure, and provider-call metadata.
 
 | Metric | All | Workout | Copilot |
 | --- | ---: | ---: | ---: |
@@ -235,7 +254,7 @@ Assertions include live badge, exactly two calls on successful workflows, expect
 
 ## Known limitations
 
-- The graph and conversations are in memory; restarting clears plans and the last-eight-turn conversation context.
+- PostgreSQL now persists graph versions, generated plans, conversations, workflow runs, and LangGraph checkpoints; the 32-case quality run is sequential and does not establish concurrent-user or load behavior.
 - Only the supplied 50 exercises and Jordan's fictional record exist.
 - The curated domain overlay is deliberately small. Unknown safety anatomy fails closed.
 - Phase minutes are deterministic estimates, not biomechanical timing validation.

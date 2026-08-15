@@ -81,6 +81,23 @@ describe("Coach Copilot API", () => {
     expect(JSON.stringify(vitamin.body.answer)).toContain("cannot establish");
   });
 
+  it("routes bloodwork language and its clinical-range follow-up", async () => {
+    const bloodwork = await request(app).post("/api/copilot/query").send({
+      memberId: "mbr_01HX9JORDAN",
+      message: "Give me the important parts of her latest bloodwork, but don't interpret it.",
+    }).expect(200);
+    expect(bloodwork.body.topic).toBe("labs");
+    expect(JSON.stringify(bloodwork.body.answer)).toContain("LDL 118");
+
+    const followUp = await request(app).post("/api/copilot/query").send({
+      memberId: "mbr_01HX9JORDAN",
+      conversationId: bloodwork.body.conversationId,
+      message: "Does the file tell us whether any of that is abnormal?",
+    }).expect(200);
+    expect(followUp.body.topic).toBe("labs_reference");
+    expect(JSON.stringify(followUp.body.answer)).toContain("cannot establish");
+  });
+
   it("routes natural coach phrasing and trims narrow follow-up answers", async () => {
     const today = await request(app).post("/api/copilot/query").send({ memberId: "mbr_01HX9JORDAN", message: "I'm about to hop on with Jordan. What are the two or three things I shouldn't miss?" }).expect(200);
     expect(today.body.topic).toBe("today");
@@ -150,5 +167,20 @@ describe("Coach Copilot API", () => {
     }).expect(200);
     const jumpDecision = noJumping.body.decisions.find((decision: { exerciseName: string }) => decision.exerciseName === "Static Jump");
     expect(jumpDecision.reason).toContain("Plyometrics are removed by the active knee rule");
+
+    const base = await request(app).post("/api/workouts/generate").send({
+      memberId: "mbr_01HX9JORDAN",
+      prompt: "Create a 30-minute knee-friendly leg workout.",
+      durationMinutes: 30,
+    }).expect(200);
+    const adjusted = await request(app).post("/api/workouts/generate").send({
+      memberId: "mbr_01HX9JORDAN",
+      basePlanId: base.body.plan.id,
+      prompt: "That looks good, but take out split squats and keep the session the same length.",
+      durationMinutes: 30,
+    }).expect(200);
+    const adjustedNames = adjusted.body.plan.sections.flatMap((section: { exercises: Array<{ name: string }> }) => section.exercises.map((exercise) => exercise.name));
+    expect(adjustedNames.join(" ")).not.toMatch(/split squat/i);
+    expect(adjusted.body.decisions.some((decision: { exerciseName: string; decision: string }) => decision.decision === "excluded" && /split squat/i.test(decision.exerciseName))).toBe(true);
   });
 });

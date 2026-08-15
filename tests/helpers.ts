@@ -18,6 +18,7 @@ function workoutIntent(prompt: string, durationMinutes: number): WorkoutIntent {
   if (/flat bench/.test(text)) requestedEquipment.push("Flat Bench");
   const excludedTerms: string[] = [];
   if (/exclude deadlift/.test(text)) excludedTerms.push("deadlift");
+  if (/(?:take out|leave out|remove|drop|skip).*split squat/.test(text)) excludedTerms.push("split squat");
   if (/no burpee/.test(text)) excludedTerms.push("burpee");
   if (/no jumping|no high-impact|no high impact/.test(text)) excludedTerms.push("jump");
   if (/no barbell/.test(text)) excludedTerms.push("barbell");
@@ -47,7 +48,7 @@ function copilotTopic(message: string, recentTopic?: CopilotTopic): CopilotTopic
   if (/sleep/.test(text)) return "sleep";
   if (/weight/.test(text)) return "weight";
   if (/heart rate|hrv/.test(text)) return "biomarkers";
-  if (/hba1c|latest labs|labs/.test(text)) return "labs";
+  if (/hba1c|bloodwork|latest labs|labs/.test(text)) return "labs";
   if (/dexa/.test(text)) return "dexa";
   if (/changed/.test(text)) return "changes";
   if (/churn/.test(text)) return "churn";
@@ -63,12 +64,22 @@ function copilotTopic(message: string, recentTopic?: CopilotTopic): CopilotTopic
 }
 
 export function makeControlledGateway() {
-  let lastCopilotTopic: CopilotTopic | undefined;
   return new ControlledStructuredGateway("gpt-5.6-luna", (stage, user) => {
     const parsed = JSON.parse(user) as Record<string, any>;
     if (stage === "workout_intent") {
       const request = parsed.request as { prompt: string; durationMinutes: number };
-      return workoutIntent(request.prompt, request.durationMinutes);
+      const previous = parsed.previousIntent as WorkoutIntent | null;
+      const next = workoutIntent(request.prompt, request.durationMinutes);
+      const hasExplicitFocus = /recover|pec|chest|upper|lower|leg|knee-friendly|core|full.body/i.test(request.prompt);
+      return {
+        ...next,
+        focus: hasExplicitFocus || !previous ? next.focus : previous.focus,
+        requestedEquipment: next.requestedEquipment.length ? next.requestedEquipment : (previous?.requestedEquipment ?? []),
+        equipmentMode: /only|just|nothing but/i.test(request.prompt) ? next.equipmentMode : (previous?.equipmentMode ?? next.equipmentMode),
+        excludedTerms: [...new Set([...(previous?.excludedTerms ?? []), ...next.excludedTerms])],
+        safetyTerms: [...new Set([...(previous?.safetyTerms ?? []), ...next.safetyTerms])],
+        noImpact: Boolean(previous?.noImpact) || next.noImpact,
+      };
     }
     if (stage === "workout_narrative") {
       const plan = parsed.plan as { title: string; safetyNotes: string[]; sections: Array<{ exercises: Array<{ exerciseId: string; evidenceIds: string[]; riskLevel: string }> }> };
@@ -84,10 +95,11 @@ export function makeControlledGateway() {
     }
     if (stage === "copilot_intent") {
       const message = String(parsed.message);
+      const recentConversation = parsed.recentConversation as Array<{ topic?: CopilotTopic }> | undefined;
+      const recentTopic = recentConversation?.at(-1)?.topic;
       const broadQuestion = /\boverall\b|how(?:'s| is) (?:she|he|jordan|the member) doing|big picture|general picture/i.test(message);
-      const topic: CopilotTopic = broadQuestion ? "workout" : copilotTopic(message, lastCopilotTopic);
+      const topic: CopilotTopic = broadQuestion ? "workout" : copilotTopic(message, recentTopic);
       const relatedTopics: CopilotTopic[] = broadQuestion ? ["adherence", "injuries"] : [];
-      lastCopilotTopic = topic;
       return { topic, relatedTopics, timeHorizon: null, requestedChart: /plot|trend|compare/i.test(message), entities: [], unresolvedTerms: [] };
     }
     if (stage === "copilot_answer") {

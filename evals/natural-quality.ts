@@ -3,6 +3,7 @@ import { createApp } from "../src/server/app.js";
 import { loadConfig } from "../src/server/config.js";
 import { createProductionRuntime } from "../src/server/runtime.js";
 import { member } from "../src/server/data.js";
+import { makeControlledGateway } from "../tests/helpers.js";
 
 type Workflow = "workout" | "copilot";
 
@@ -152,6 +153,25 @@ const workoutSteps: WorkoutStep[] = [
     focus: "lower body",
     onlyEquipment: ["Dumbbell", "Kettlebell"],
     forbidden: ["deadlift", "jump", "cyclist squat"],
+  },
+  {
+    id: "NQ-W13",
+    workflow: "workout",
+    question: "Actually, she only has 20 minutes now. Keep the same knee-friendly leg focus and exclusions.",
+    durationMinutes: 20,
+    baseFrom: "NQ-W02",
+    focus: "lower body",
+    forbidden: ["split squat", "jump", "cyclist squat", "deadlift"],
+  },
+  {
+    id: "NQ-W14",
+    workflow: "workout",
+    question: "Let's make that upper body instead, and keep it to dumbbells only.",
+    durationMinutes: 25,
+    baseFrom: "NQ-W03",
+    focus: "upper body",
+    onlyEquipment: ["Dumbbell"],
+    forbidden: ["jump", "cyclist squat", "deadlift"],
   },
 ];
 
@@ -336,7 +356,7 @@ const copilotSteps: CopilotStep[] = [
 
 export const naturalQualitySteps: QualityStep[] = [...workoutSteps, ...copilotSteps];
 
-if (naturalQualitySteps.length !== 30) throw new Error(`Expected exactly 30 quality-audit interactions; found ${naturalQualitySteps.length}`);
+if (naturalQualitySteps.length !== 32) throw new Error(`Expected exactly 32 quality-audit interactions; found ${naturalQualitySteps.length}`);
 const caseFilter = new Set((process.env.QUALITY_CASES ?? "").split(",").map((value) => value.trim()).filter(Boolean));
 const selectedCaseIds = new Set(caseFilter);
 for (const step of naturalQualitySteps) {
@@ -347,10 +367,19 @@ for (const step of naturalQualitySteps) {
 const selectedSteps = caseFilter.size ? naturalQualitySteps.filter((step) => selectedCaseIds.has(step.id)) : naturalQualitySteps;
 if (!selectedSteps.length) throw new Error("QUALITY_CASES did not match any natural-language audit interactions");
 
-const config = { ...loadConfig(), requireLiveModel: true };
-if (!config.apiKey) throw new Error("OPENAI_API_KEY is required for the natural-language quality audit");
+const modelMode = process.env.QUALITY_MODEL_MODE === "controlled" ? "controlled" : "openai";
+const loadedConfig = loadConfig();
+const config = {
+  ...loadedConfig,
+  requireLiveModel: true,
+  databaseUrl: loadedConfig.databaseUrl ?? (modelMode === "controlled"
+    ? "postgresql://coach_copilot:coach_copilot@127.0.0.1:5434/coach_copilot"
+    : undefined),
+  ...(modelMode === "controlled" ? { apiKey: "controlled-quality-gateway" } : {}),
+};
+if (modelMode === "openai" && !config.apiKey) throw new Error("OPENAI_API_KEY is required for the live natural-language quality audit");
 
-const runtime = await createProductionRuntime(config);
+const runtime = await createProductionRuntime(config, modelMode === "controlled" ? makeControlledGateway() : undefined);
 const { app } = createApp(config, runtime);
 const server = app.listen(0, "127.0.0.1");
 await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -535,6 +564,7 @@ const passed = results.filter((result) => result.passed).length;
 const totalTokens = results.flatMap((result) => result.tokenUsage).reduce((sum: number, usage: any) => sum + Number(usage?.total_tokens ?? 0), 0);
 const summary = {
   generatedAt: new Date().toISOString(),
+  modelMode,
   model: config.model,
   unretried: true,
   selectedCaseIds: selectedSteps.map((step) => step.id),
@@ -550,7 +580,8 @@ const summary = {
   results,
 };
 fs.mkdirSync("artifacts", { recursive: true });
-const artifactPath = caseFilter.size ? "artifacts/natural-quality-live-focused.json" : "artifacts/natural-quality-live.json";
+const artifactStem = modelMode === "controlled" ? "natural-quality-controlled" : "natural-quality-live";
+const artifactPath = caseFilter.size ? `artifacts/${artifactStem}-focused.json` : `artifacts/${artifactStem}.json`;
 fs.writeFileSync(artifactPath, `${JSON.stringify(summary, null, 2)}\n`);
-console.log(JSON.stringify({ model: summary.model, passed: summary.passed, total: summary.total, passRate: summary.passRate, averageLatencyMs: summary.latency.averageMs, totalTokens }, null, 2));
+console.log(JSON.stringify({ modelMode: summary.modelMode, model: summary.model, passed: summary.passed, total: summary.total, passRate: summary.passRate, averageLatencyMs: summary.latency.averageMs, totalTokens }, null, 2));
 if (passed !== results.length) process.exitCode = 1;

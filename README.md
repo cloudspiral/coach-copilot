@@ -96,6 +96,7 @@ The default development URLs are documented in `.env.example`. `coach_copilot_te
 | `npm run typecheck` | Check client, server, scripts, evaluations, and tests |
 | `npm test` | Unit/API tests using in-memory repositories and `MemorySaver` |
 | `npm run test:evals` | Controlled semantic matrix and follow-up coverage |
+| `npm run test:quality` | 32 natural workout/Copilot interactions through the local API, PostgreSQL, LangGraph, and a controlled model gateway |
 | `npm run test:db` | Guarded PostgreSQL reset plus migration, ingestion, integrity, persistence, restart, and checkpoint tests |
 | `npm run test:e2e` | Offline Playwright browser flows |
 | `npm run build` | Production client and server build |
@@ -109,7 +110,9 @@ Live commands require both PostgreSQL setup and `OPENAI_API_KEY`. They write ign
 
 ## Evaluation status
 
-Before this persistence refactor, the controlled suite contained 12 unit/API tests, 47 controlled evaluation cases, and 6 offline browser tests, all passing. The prior live evidence remains documented in [docs/EVALUATION.md](docs/EVALUATION.md). Live provider/browser gates should be rerun when a usable credential is present; they are not implied by a successful offline run.
+The current post-persistence verification passes 32/32 natural conversation interactions, 20/20 unit/API tests, 47/47 controlled semantic cases, 4/4 PostgreSQL integration tests, and 6/6 offline browser tests, plus lint, typecheck, and the production build. The 32 interactions include 14 Workout Generator turns, 18 Coach Copilot turns, and nine context-dependent follow-ups; every selected exercise and every Copilot narrative sentence has valid evidence references.
+
+The prior live-model evidence remains documented in [docs/EVALUATION.md](docs/EVALUATION.md). A current live provider/browser rerun is separate from the controlled gate and is not implied by these results.
 
 ## Sources and scope
 
